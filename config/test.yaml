@@ -1,0 +1,15 @@
+dataset:
+  type: seq-cifar10
+model:
+  type: sgd
+  backbone: ResNet18
+  buffer:
+  selector:
+optim:
+  type: SGD
+  lr: 0.1
+  epochs: 150
+  drop:
+ckpt:
+logger:
+params:
