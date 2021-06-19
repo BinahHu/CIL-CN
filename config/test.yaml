@@ -1,5 +1,7 @@
 dataset:
-  type: seq-cifar10
+  type: cifar10
+  root: /Users/binah/projects/CIL-CN/datasets
+  batch_size: 32
 model:
   type: sgd
   backbone: ResNet18
@@ -8,7 +10,7 @@ model:
 optim:
   type: SGD
   lr: 0.1
-  epochs: 150
+  epochs: 1
   drop:
 ckpt:
 logger:

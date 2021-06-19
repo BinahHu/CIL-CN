@@ -15,7 +15,7 @@ class SGD(Base):
         loss.backward()
         self.opt.step()
 
-        return loss.item()
+        return loss.item(), 0
 
     def evaluate(self, inputs, labels):
         class_per_task = self.args['dataset']['class_num'] // self.args['dataset']['task_num']

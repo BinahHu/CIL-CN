@@ -1,10 +1,13 @@
 import importlib
 
+'''
 file_class_pair = {'ccll':'CCLL',
                    'covnorm':'CovNorm',
                    'derpp':'DERpp',
                    'joint':'Joint',
                    'sgd':'SGD'}
+'''
+file_class_pair = {'sgd':'SGD'}
 
 models = {}
 for k,v in file_class_pair.items():

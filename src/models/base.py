@@ -31,14 +31,14 @@ class Base(nn.Module):
     def evaluate(self, inputs, labels):
         pass
 
-    def begin_task(self, t):
+    def begin_task(self, args, t):
         pass
 
-    def end_task(self, t):
+    def end_task(self, args, t):
         pass
 
-    def begin_epoch(self, t, e):
+    def begin_epoch(self, args, t, e):
         pass
 
-    def end_epoch(self, t, e):
+    def end_epoch(self, args, t, e):
         pass
