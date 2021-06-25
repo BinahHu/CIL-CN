@@ -1,7 +1,7 @@
 dataset:
   type: tinyimg
-  root: /home/zhiyuan/CIL-CN/datasets/
-  batch_size: 32
+  root: /Users/binah/projects/CIL-CN/datasets
+  batch_size: 8
 model:
   type: sgd
   backbone: ResNet18
@@ -10,7 +10,7 @@ model:
 optim:
   type: SGD
   lr: 0.1
-  epochs: 50
+  epochs: 1
   drop:
 ckpt:
 logger:

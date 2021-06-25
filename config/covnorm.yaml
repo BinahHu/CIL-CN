@@ -1,0 +1,27 @@
+dataset:
+  type: tinyimg
+  root: /home/zhiyuan/CIL-CN/datasets/
+  batch_size: 32
+model:
+  type: covnorm
+  backbone: ResNet18
+  header_mode: small
+  buffer:
+  selector:
+  pretrained:
+optim:
+  type: SGD
+  lr: 0.08
+  lr_adapter:
+  epochs: 150
+  drop:
+    type: point
+    val:
+      - 50
+      - 100
+      - 125
+ckpt:
+logger:
+  root: /home/zhiyuan/CIL-CN/log/
+  name: covnorm_lr0.08_bz32
+params:

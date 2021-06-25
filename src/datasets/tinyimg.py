@@ -3,7 +3,6 @@
 # This source code is licensed under the license found in the
 # LICENSE file in the root directory of this source tree.
 
-from torchvision.datasets import CIFAR10
 import torchvision.transforms as transforms
 from PIL import Image
 import numpy as np
@@ -11,7 +10,7 @@ import torch
 import os
 
 
-class SUBCIFAR10(torch.utils.data.Dataset):
+class SUBTINYIMG(torch.utils.data.Dataset):
     def __init__(self, data, targets, transform = None, target_transform = None, train=True):
         self.data = data
         self.targets = targets
@@ -32,7 +31,7 @@ class SUBCIFAR10(torch.utils.data.Dataset):
         img, target = self.data[index], self.targets[index]
 
         # to return a PIL Image
-        img = Image.fromarray(img, mode='RGB')
+        img = Image.fromarray(np.uint8(255 * img))
         original_img = img.copy()
 
         if self.transform is not None:
@@ -71,16 +70,16 @@ def split_by_task(targets, task_num, class_per_task, test_prec = 0.1):
     return train_masks, test_masks
 
 
-class SeqCIFAR10:
-    NAME = 'seq-cifar10'
-    N_TASKS = 5
-    N_CLASSES = 10
+class SeqTinyImg:
+    NAME = 'seq-tinyimg'
+    N_TASKS = 10
+    N_CLASSES = 200
     TRANSFORM = transforms.Compose(
-            [transforms.RandomCrop(32, padding=4),
-             transforms.RandomHorizontalFlip(),
-             transforms.ToTensor(),
-             transforms.Normalize((0.4914, 0.4822, 0.4465),
-                                  (0.2470, 0.2435, 0.2615))])
+        [transforms.RandomCrop(64, padding=4),
+         transforms.RandomHorizontalFlip(),
+         transforms.ToTensor(),
+         transforms.Normalize((0.4802, 0.4480, 0.3975),
+                              (0.2770, 0.2691, 0.2821))])
 
     def __init__(self, args):
         self.args = args
@@ -89,39 +88,64 @@ class SeqCIFAR10:
         self.sub_test_datasets = []
         self.build_sub_datasets()
 
+    def load_tinyimg_data(self, root):
+        if os.path.isdir(root) and len(os.listdir(root)) > 0:
+            print('Download not needed, files already on disk.')
+        else:
+            from google_drive_downloader import GoogleDriveDownloader as gdd
+
+            # https://drive.google.com/file/d/1Sy3ScMBr0F4se8VZ6TAwDYF-nNGAAdxj/view
+            print('Downloading dataset')
+            gdd.download_file_from_google_drive(
+                file_id='1Sy3ScMBr0F4se8VZ6TAwDYF-nNGAAdxj',
+                dest_path=os.path.join(root, 'tiny-imagenet-processed.zip'),
+                unzip=True)
+
+        data = []
+        targets = []
+        for num in range(20):
+            data.append(np.load(os.path.join(root, 'processed/x_train_{:02d}.npy'.format(num+1))))
+            data.append(np.load(os.path.join(root, 'processed/x_val_{:02d}.npy'.format(num+1))))
+            targets.append(np.load(os.path.join(root, 'processed/y_train_{:02d}.npy'.format(num + 1))))
+            targets.append(np.load(os.path.join(root, 'processed/y_val_{:02d}.npy'.format(num + 1))))
+
+        data = np.concatenate(data)
+        targets = np.concatenate(targets)
+
+        return data, targets
+
     def build_sub_datasets(self):
         class_per_task = self.N_CLASSES // self.N_TASKS
         train_transform = self.TRANSFORM
         test_transform = transforms.Compose([transforms.ToTensor(), self.get_normalization_transform()])
 
-        cifar10 = CIFAR10(os.path.join(self.root, 'CIFAR10'), train=True, transform=None, target_transform=None, download=True)
-        data = np.array(cifar10.data)
-        targets = np.array(cifar10.targets)
+        data, targets = self.load_tinyimg_data(os.path.join(self.root, 'TINYIMG'))
 
         train_masks, test_masks = split_by_task(targets, self.N_TASKS, class_per_task)
 
         for i in range(self.N_TASKS):
             if self.args['model']['type'] == 'joint':
                 if i == self.N_TASKS - 1:
+                    total_mask = np.concatenate(train_masks)
                     self.sub_train_datasets.append(
-                        SUBCIFAR10(data=data[tuple(train_masks)], targets=targets[tuple(train_masks)],
+                        SUBTINYIMG(data=data[total_mask], targets=targets[total_mask],
                                    transform=train_transform, train=True))
             else:
                 self.sub_train_datasets.append(
-                    SUBCIFAR10(data=data[train_masks[i]], targets=targets[train_masks[i]],
+                    SUBTINYIMG(data=data[train_masks[i]], targets=targets[train_masks[i]],
                                transform=train_transform, train=True))
             self.sub_test_datasets.append(
-                SUBCIFAR10(data=data[test_masks[i]], targets=targets[test_masks[i]],
+                SUBTINYIMG(data=data[test_masks[i]], targets=targets[test_masks[i]],
                            transform=test_transform, train=False))
 
     @staticmethod
     def get_normalization_transform():
-        transform = transforms.Normalize((0.4914, 0.4822, 0.4465),
-                                         (0.2470, 0.2435, 0.2615))
+        transform = transforms.Normalize((0.4802, 0.4480, 0.3975),
+                                         (0.2770, 0.2691, 0.2821))
         return transform
 
     @staticmethod
     def get_transform():
         transform = transforms.Compose(
-            [transforms.ToPILImage(), SeqCIFAR10.TRANSFORM])
+            [transforms.ToPILImage(), SeqTinyImg.TRANSFORM])
         return transform

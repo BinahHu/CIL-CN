@@ -61,13 +61,40 @@ class BasicBlock(nn.Module):
         return out
 
 
+class Head(nn.Module):
+    """
+    CovNorm ResNet head
+    """
+    def __init__(self, nf: int, header_mode):
+        super(Head, self).__init__()
+        self.header_mode = header_mode
+
+        if self.header_mode == 'small':
+            self.conv1 = conv3x3(3, nf * 1)
+        else:
+            self.conv1 = nn.Conv2d(3, nf * 1, kernel_size=7, stride=2, padding=3, bias=False)
+            self.maxpool = nn.MaxPool2d(kernel_size=3, stride=2, padding=1)
+        self.bn1 = nn.BatchNorm2d(nf * 1)
+
+    def forward(self, x):
+        """
+        Compute a forward pass.
+        :param x: input tensor (batch_size, input_size)
+        :return: output tensor list, (task_num, 10)
+        """
+        if self.header_mode == 'small':
+            return relu(self.bn1(self.conv1(x)))
+        else:
+            x = F.interpolate(x, [256, 256], mode='bilinear')
+            return self.maxpool(relu(self.bn1(self.conv1(x))))
+
 class ResNet(nn.Module):
     """
     ResNet network architecture. Designed for complex datasets.
     """
 
     def __init__(self, block: BasicBlock, num_blocks: List[int],
-                 num_classes: int, nf: int) -> None:
+                 num_classes: int, nf: int, header_mode = 'small') -> None:
         """
         Instantiates the layers of the network.
         :param block: the basic ResNet block
@@ -80,17 +107,14 @@ class ResNet(nn.Module):
         self.block = block
         self.num_classes = num_classes
         self.nf = nf
-        self.conv1 = conv3x3(3, nf * 1)
-        self.bn1 = nn.BatchNorm2d(nf * 1)
+        self.header = Head(nf, header_mode=header_mode)
         self.layer1 = self._make_layer(block, nf * 1, num_blocks[0], stride=1)
         self.layer2 = self._make_layer(block, nf * 2, num_blocks[1], stride=2)
         self.layer3 = self._make_layer(block, nf * 4, num_blocks[2], stride=2)
         self.layer4 = self._make_layer(block, nf * 8, num_blocks[3], stride=2)
         self.linear = nn.Linear(nf * 8 * block.expansion, num_classes)
 
-        self._features = nn.Sequential(self.conv1,
-                                       self.bn1,
-                                       nn.ReLU(),
+        self._features = nn.Sequential(self.header,
                                        self.layer1,
                                        self.layer2,
                                        self.layer3,
@@ -121,7 +145,7 @@ class ResNet(nn.Module):
         :param x: input tensor (batch_size, *input_shape)
         :return: output tensor (output_classes)
         """
-        out = relu(self.bn1(self.conv1(x)))
+        out = self.header(x)
         out = self.layer1(out)  # 64, 32, 32
         out = self.layer2(out)  # 128, 16, 16
         out = self.layer3(out)  # 256, 8, 8
@@ -176,11 +200,15 @@ class ResNet(nn.Module):
         return torch.cat(grads)
 
 
-def resnet18(nclasses: int, nf: int=64) -> ResNet:
+def resnet18(args, nclasses: int, nf: int=64) -> ResNet:
     """
     Instantiates a ResNet18 network.
     :param nclasses: number of output classes
     :param nf: number of filters
     :return: ResNet network
     """
-    return ResNet(BasicBlock, [2, 2, 2, 2], nclasses, nf)
+    header_mode = 'small'
+    if 'header_mode' in args['model'] and args['model']['header_mode'] is not None:
+        assert args['model']['header_mode'] in ['big', 'small']
+        header_mode = args['model']['header_mode']
+    return ResNet(BasicBlock, [2, 2, 2, 2], nclasses, nf, header_mode=header_mode)

@@ -7,7 +7,9 @@ file_class_pair = {'ccll':'CCLL',
                    'joint':'Joint',
                    'sgd':'SGD'}
 '''
-file_class_pair = {'sgd':'SGD'}
+file_class_pair = {'sgd':'SGD',
+                   'joint':'Joint',
+                   'covnorm':'CovNorm'}
 
 models = {}
 for k,v in file_class_pair.items():

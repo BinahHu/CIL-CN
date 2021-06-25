@@ -1,12 +1,29 @@
 import torch
 import torch.nn as nn
 from models.base import Base
-
+from torch.optim import SGD as optimSGD
+import backbone.ResNet as ResNet
+import task_selectors.default as default
 
 class SGD(Base):
     def __init__(self, args, transformer=None):
-        super(SGD, self).__init__(args, transformer=None)
+        super(SGD, self).__init__()
+        self.args = args
+        self.transformer = transformer
+
+        self.backbone = self.build_backbone()
+        self.selector = self.build_selector()
+        self.opt = self.build_optim()
         self.loss = nn.CrossEntropyLoss()
+
+    def build_optim(self):
+        return optimSGD(self.parameters(), lr=self.args['optim']['lr'])
+
+    def build_backbone(self):
+        return ResNet.resnet18(self.args, self.args['dataset']['class_num'])
+
+    def build_selector(self):
+        return default.DefaultSelector(self.args['dataset']['task_num'], self.args['dataset']['class_num'])
 
     def observe(self, inputs, labels, non_aug_input=None, logits=None):
         self.opt.zero_grad()
@@ -15,7 +32,11 @@ class SGD(Base):
         loss.backward()
         self.opt.step()
 
-        return loss.item(), 0
+        pred = outputs.argmax(dim=1)
+        correct = (pred == labels).sum().item()
+        acc = correct / labels.shape[0]
+
+        return loss.item(), 0, acc, 0
 
     def evaluate(self, inputs, labels):
         class_per_task = self.args['dataset']['class_num'] // self.args['dataset']['task_num']

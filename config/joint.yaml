@@ -3,15 +3,18 @@ dataset:
   root: /home/zhiyuan/CIL-CN/datasets/
   batch_size: 32
 model:
-  type: sgd
+  type: joint
   backbone: ResNet18
+  header_mode: big
   buffer:
   selector:
 optim:
   type: SGD
-  lr: 0.1
-  epochs: 50
+  lr: 0.03
+  epochs: 100
   drop:
 ckpt:
 logger:
+  root: /home/zhiyuan/CIL-CN/log/
+  name: joint_bz32_bighead
 params:
