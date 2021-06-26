@@ -19,7 +19,10 @@ class Joint(Base):
         self.loss = nn.CrossEntropyLoss()
 
     def build_optim(self):
-        return optimSGD(self.parameters(), lr=self.args['optim']['lr'])
+        wd = 4e-3
+        if 'weight_decay' in self.args['optim'] and self.args['optim']['weight_decay'] is not None:
+            wd = self.args['optim']['weight_decay']
+        return optimSGD(self.parameters(), lr=self.args['optim']['lr'], weight_decay=wd, momentum=0.9)
 
     def build_backbone(self):
         return ResNet.resnet18(self.args, self.args['dataset']['class_num'])

@@ -5,16 +5,17 @@ dataset:
 model:
   type: joint
   backbone: ResNet18
-  header_mode: big
+  header_mode: small
   buffer:
   selector:
 optim:
   type: SGD
   lr: 0.03
+  weight_decay: 0.004
   epochs: 100
   drop:
 ckpt:
 logger:
   root: /home/zhiyuan/CIL-CN/log/
-  name: joint_bz32_bighead
+  name: joint_wd_4e-3_bz32
 params:
