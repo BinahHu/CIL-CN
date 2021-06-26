@@ -2,7 +2,8 @@ import importlib
 
 
 file_class_pair = {'cifar10':'SeqCIFAR10',
-                   'tinyimg':'SeqTinyImg'}
+                   'tinyimg':'SeqTinyImg',
+                   'imagenet':'ImageNet'}
 
 datasets = {}
 for k,v in file_class_pair.items():
