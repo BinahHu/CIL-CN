@@ -41,7 +41,10 @@ class CovNorm(Base):
         return loss.item(), 0, acc, 0
 
     def build_optim(self):
-        return optimSGD(self.backbone.get_parameters(0), lr=self.args['optim']['lr'])
+        wd = 4e-3
+        if 'weight_decay' in self.args['optim'] and self.args['optim']['weight_decay'] is not None:
+            wd = self.args['optim']['weight_decay']
+        return optimSGD(self.backbone.get_parameters(0), lr=self.args['optim']['lr'], weight_decay=wd, momentum=0.9)
 
     def build_backbone(self):
         return ResNet_Adapter.resnet18_adapter(args=self.args, task_num=self.task_num, class_per_task=self.class_per_task)
