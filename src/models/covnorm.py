@@ -40,11 +40,11 @@ class CovNorm(Base):
 
         return loss.item(), 0, acc, 0
 
-    def build_optim(self):
+    def build_optim(self, task_id=0):
         wd = 4e-3
         if 'weight_decay' in self.args['optim'] and self.args['optim']['weight_decay'] is not None:
             wd = self.args['optim']['weight_decay']
-        return optimSGD(self.backbone.get_parameters(0), lr=self.args['optim']['lr'], weight_decay=wd, momentum=0.9)
+        return optimSGD(self.backbone.get_parameters(task_id), lr=self.args['optim']['lr'], weight_decay=wd, momentum=0.9)
 
     def build_backbone(self):
         return ResNet_Adapter.resnet18_adapter(args=self.args, task_num=self.task_num, class_per_task=self.class_per_task)
@@ -80,7 +80,7 @@ class CovNorm(Base):
         self.task_id = t
         self.backbone.set_status(t)
 
-        self.opt = optimSGD(self.backbone.get_parameters(t), lr=self.lr)
+        self.opt = self.build_optim(task_id=t)
 
     def begin_epoch(self, args, t, e):
         if args['optim']['drop'] is not None:
