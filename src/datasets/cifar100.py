@@ -3,7 +3,7 @@
 # This source code is licensed under the license found in the
 # LICENSE file in the root directory of this source tree.
 
-from torchvision.datasets import CIFAR10
+from torchvision.datasets import CIFAR100
 import torchvision.transforms as transforms
 from PIL import Image
 import numpy as np
@@ -11,7 +11,7 @@ import torch
 import os
 
 
-class SUBCIFAR10(torch.utils.data.Dataset):
+class SUBCIFAR100(torch.utils.data.Dataset):
     def __init__(self, data, targets, transform = None, target_transform = None, train=True):
         self.data = data
         self.targets = targets
@@ -71,16 +71,16 @@ def split_by_task(targets, task_num, class_per_task, test_prec = 0.1):
     return train_masks, test_masks
 
 
-class SeqCIFAR10:
-    NAME = 'seq-cifar10'
-    N_TASKS = 5
-    N_CLASSES = 10
+class SeqCIFAR100:
+    NAME = 'seq-cifar100'
+    N_TASKS = 10
+    N_CLASSES = 100
     TRANSFORM = transforms.Compose(
             [transforms.RandomCrop(32, padding=4),
              transforms.RandomHorizontalFlip(),
              transforms.ToTensor(),
-             transforms.Normalize((0.4914, 0.4822, 0.4465),
-                                  (0.2470, 0.2435, 0.2615))])
+             transforms.Normalize((0.5071, 0.4865, 0.4409),
+                                  (0.2673, 0.2564, 0.2762))])
 
     def __init__(self, args):
         self.args = args
@@ -94,9 +94,9 @@ class SeqCIFAR10:
         train_transform = self.TRANSFORM
         test_transform = transforms.Compose([transforms.ToTensor(), self.get_normalization_transform()])
 
-        cifar10 = CIFAR10(os.path.join(self.root, 'CIFAR10'), train=True, transform=None, target_transform=None, download=True)
-        data = np.array(cifar10.data)
-        targets = np.array(cifar10.targets)
+        cifar100 = CIFAR100(os.path.join(self.root, 'CIFAR100'), train=True, transform=None, target_transform=None, download=True)
+        data = np.array(cifar100.data)
+        targets = np.array(cifar100.targets)
 
         train_masks, test_masks = split_by_task(targets, self.N_TASKS, class_per_task)
 
@@ -105,24 +105,24 @@ class SeqCIFAR10:
                 if i == self.N_TASKS - 1:
                     total_mask = np.concatenate(train_masks)
                     self.sub_train_datasets.append(
-                        SUBCIFAR10(data=data[total_mask], targets=targets[total_mask],
-                                    transform=train_transform, train=True))
+                        SUBCIFAR100(data=data[total_mask], targets=targets[total_mask],
+                                   transform=train_transform, train=True))
             else:
                 self.sub_train_datasets.append(
-                    SUBCIFAR10(data=data[train_masks[i]], targets=targets[train_masks[i]],
+                    SUBCIFAR100(data=data[train_masks[i]], targets=targets[train_masks[i]],
                                transform=train_transform, train=True))
             self.sub_test_datasets.append(
-                SUBCIFAR10(data=data[test_masks[i]], targets=targets[test_masks[i]],
+                SUBCIFAR100(data=data[test_masks[i]], targets=targets[test_masks[i]],
                            transform=test_transform, train=False))
 
     @staticmethod
     def get_normalization_transform():
-        transform = transforms.Normalize((0.4914, 0.4822, 0.4465),
-                                         (0.2470, 0.2435, 0.2615))
+        transform = transforms.Normalize((0.5071, 0.4865, 0.4409),
+                                         (0.2673, 0.2564, 0.2762))
         return transform
 
     @staticmethod
     def get_transform():
         transform = transforms.Compose(
-            [transforms.ToPILImage(), SeqCIFAR10.TRANSFORM])
+            [transforms.ToPILImage(), SeqCIFAR100.TRANSFORM])
         return transform

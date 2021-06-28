@@ -7,8 +7,9 @@ from torch.utils.tensorboard import SummaryWriter
 class Logger:
     def __init__(self, args):
         self.root = args['logger']['root']
+        self.dataset = args['dataset']['type']
         self.name = args['logger']['name']
-        self.path = os.path.join(self.root, self.name)
+        self.path = os.path.join(os.path.join(self.root, self.dataset), self.name)
         if self.name is not 'test':
             assert (not os.path.exists(self.path)), "Model name already used!"
         os.mkdir(self.path)
