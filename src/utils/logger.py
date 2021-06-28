@@ -10,16 +10,13 @@ class Logger:
         self.dataset = args['dataset']['type']
         self.name = args['logger']['name']
         self.path = os.path.join(os.path.join(self.root, self.dataset), self.name)
-        if self.name is not 'test':
+        if not(self.name == 'test'):
             assert (not os.path.exists(self.path)), "Model name already used!"
-        os.mkdir(self.path)
+            os.mkdir(self.path)
         self.logger = SummaryWriter(log_dir=self.path)
 
-    def log(self, t, i, loss, loss_task, acc, acc_task):
-        self.logger.add_scalar('task_{}/loss'.format(t), loss, i)
-        self.logger.add_scalar('task_{}/loss_task'.format(t), loss_task, i)
-        self.logger.add_scalar('task_{}/acc'.format(t), acc, i)
-        self.logger.add_scalar('task_{}/acc_task'.format(t), acc_task, i)
+    def log(self, i, name, val):
+        self.logger.add_scalar(name, val, i)
 
     def close(self):
         self.logger.close()

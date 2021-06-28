@@ -26,6 +26,10 @@ class CovNorm(Base):
     def build_selector(self):
         return default.DefaultSelector(self.args['dataset']['task_num'], self.args['dataset']['class_num'])
 
+    def forward(self, inputs):
+        outputs = self.backbone(inputs)
+        return outputs
+
     def observe(self, inputs, labels, non_aug_input=None, logits=None):
         self.opt.zero_grad()
         outputs = self.backbone(inputs)
@@ -41,7 +45,7 @@ class CovNorm(Base):
         return loss.item(), 0, acc, 0
 
     def build_optim(self, task_id=0):
-        wd = 4e-3
+        wd = 4e-5
         if 'weight_decay' in self.args['optim'] and self.args['optim']['weight_decay'] is not None:
             wd = self.args['optim']['weight_decay']
         return optimSGD(self.backbone.get_parameters(task_id), lr=self.args['optim']['lr'], weight_decay=wd, momentum=0.9)

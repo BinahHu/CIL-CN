@@ -128,7 +128,7 @@ class Head(nn.Module):
         if self.header_mode == 'small':
             return relu(self.adapters_group[i](self.conv1(x)))
         else:
-            x = F.interpolate(x, [256, 256], mode='bilinear')
+            #x = F.interpolate(x, [256, 256], mode='bilinear')
             return self.maxpool(relu(self.adapters_group[i](self.conv1(x))))
 
 class ResNet(nn.Module):
@@ -159,6 +159,7 @@ class ResNet(nn.Module):
         self.layer2 = self._make_layer(block, nf * 2, num_blocks[1], stride=2, task_num=task_num, adapter=adapter)
         self.layer3 = self._make_layer(block, nf * 4, num_blocks[2], stride=2, task_num=task_num, adapter=adapter)
         self.layer4 = self._make_layer(block, nf * 8, num_blocks[3], stride=2, task_num=task_num, adapter=adapter)
+        self.dropout = nn.Dropout(p=args['model']['dropout'])
         self.linear_group = []
         for i in range(task_num):
             self.linear_group.append(nn.Linear(nf * 8 * block.expansion, class_per_task))
@@ -253,6 +254,7 @@ class ResNet(nn.Module):
         i = self.task_id
         out = avg_pool2d(outs, outs.shape[2])  # 512, 1, 1
         out = out.view(out.size(0), -1)  # 512
+        out = self.dropout(out)
         out = self.linear_group[i](out)
         return out
 
