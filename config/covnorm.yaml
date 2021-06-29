@@ -13,7 +13,7 @@ optim:
   type: SGD
   lr: 0.1
   lr_adapter: 0.1
-  weight_decay: 0.00004
+  weight_decay: 0.0004
   epochs: 150
   drop:
     type: point
@@ -24,5 +24,5 @@ optim:
 ckpt:
 logger:
   root: /home/zhiyuan/CIL-CN/log/
-  name: covnorm_lr0.1_pretrain_wd4e-5_bz32
+  name: covnorm_lr0.1_pretrain_wd4e-4_bz32
 params:
