@@ -44,7 +44,7 @@ class SGD(Base):
     def evaluate(self, inputs, labels):
         class_per_task = self.args['dataset']['class_num'] // self.args['dataset']['task_num']
         outputs = self.backbone(inputs)
-        TC_pred = self.selector(outputs)
+        TC_pred = self.selector.predict(outputs)
         TIL_pred = torch.zeros(labels.shape).to(torch.device(self.args['device']))
         TC_correct = 0
         for i in range(outputs.shape[0]):

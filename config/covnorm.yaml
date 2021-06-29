@@ -1,5 +1,5 @@
 dataset:
-  type: tinyimg
+  type: cifar100
   root: /home/zhiyuan/CIL-CN/datasets/
   batch_size: 32
 model:
@@ -7,13 +7,28 @@ model:
   backbone: ResNet18
   header_mode: big
   buffer:
+    size: 500
+    loss: derpp
+    alpha: 0.1
+    beta: 1.0
+    batch_size: 32
   selector:
+    backbone: ResNet18
+    header_mode: big
+    lr: 0.1
+    weight_decay: 0
+    drop:
+      type: point
+      val:
+        - 50
+        - 100
+        - 125
   pretrained: ImageNet
 optim:
   type: SGD
   lr: 0.1
   lr_adapter: 0.1
-  weight_decay: 0.00004
+  weight_decay: 0.0004
   epochs: 150
   drop:
     type: point
@@ -24,5 +39,5 @@ optim:
 ckpt:
 logger:
   root: /home/zhiyuan/CIL-CN/log/
-  name: covnorm_lr0.1_pretrain_wd4e-5_bz32
+  name: covnorm_lr0.1_pretrain_wd4e-4_bz32
 params:
