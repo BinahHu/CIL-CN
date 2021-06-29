@@ -10,9 +10,9 @@ class Logger:
         self.dataset = args['dataset']['type']
         self.name = args['logger']['name']
         self.path = os.path.join(os.path.join(self.root, self.dataset), self.name)
-        if self.name is not 'test':
+        if self.name != 'test':
             assert (not os.path.exists(self.path)), "Model name already used!"
-        os.mkdir(self.path)
+            os.mkdir(self.path)
         self.logger = SummaryWriter(log_dir=self.path)
 
     def log(self, t, i, loss, loss_task, acc, acc_task):

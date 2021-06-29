@@ -15,7 +15,7 @@ class CovNorm(Base):
     def __init__(self, args, transformer=None):
         super(CovNorm, self).__init__()
         self.args = args
-        self.transformer = transformer
+        self.transform = transformer
         self.task_num = self.args['dataset']['task_num']
         self.class_num = self.args['dataset']['class_num']
         self.class_per_task = self.class_num // self.task_num
@@ -48,13 +48,13 @@ class CovNorm(Base):
         loss.backward()
         self.opt.step()
 
-        loss_task = torch.zeros(1).cuda()
+        loss_task = torch.zeros(1)
         task_correct = 0
         task_sample = 0
         if (self.buffer is not None) and (not self.buffer.is_empty()):
             if self.buffer_loss == 'derpp':
                 self.selector_opt.zero_grad()
-                buf_inputs, buf_labels, buf_logits = self.buffer.get_data(
+                buf_inputs, buf_labels, buf_logits, _ = self.buffer.get_data(
                     self.args['model']['buffer']['batch_size'], transform=self.transform)
                 buf_outputs = self.selector(buf_inputs)
                 loss_task += self.args['model']['buffer']['alpha'] * F.mse_loss(buf_outputs, buf_logits)
@@ -63,7 +63,7 @@ class CovNorm(Base):
                 task_correct += (buf_pred == buf_labels).sum().item()
                 task_sample += buf_labels.shape[0]
 
-                buf_inputs, buf_labels, _ = self.buffer.get_data(
+                buf_inputs, buf_labels, _, _ = self.buffer.get_data(
                     self.args['model']['buffer']['batch_size'], transform=self.transform)
                 buf_outputs = self.selector(buf_inputs)
                 loss_task += self.args['model']['buffer']['beta'] * self.loss(buf_outputs, buf_labels)
@@ -87,7 +87,7 @@ class CovNorm(Base):
         task_acc = task_correct / task_sample
 
         if self.buffer is not None:
-            self.buffer.add_data(examples=not_aug_inputs, labels=task_labels, logits=buf_outputs.data)
+            self.buffer.add_data(data=not_aug_inputs, labels=task_labels, logits=buf_outputs.data)
 
         return loss.item(), loss_task.item(), acc, task_acc
 
@@ -138,6 +138,7 @@ class CovNorm(Base):
             self.lr = self.args['optim']['lr_adapter']
         self.task_id = t
         self.backbone.set_status(t)
+        self.buffer.set_status(t)
 
         self.opt = self.build_optim(task_id=t)
 

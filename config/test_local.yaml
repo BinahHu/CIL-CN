@@ -1,17 +1,41 @@
 dataset:
-  type: tinyimg
+  type: cifar10
   root: /Users/binah/projects/CIL-CN/datasets
-  batch_size: 8
+  batch_size: 32
 model:
-  type: sgd
+  type: covnorm
   backbone: ResNet18
+  header_mode: big
   buffer:
+    size: 500
+    loss: derpp
+    alpha: 0.1
+    beta: 1.0
+    batch_size: 32
   selector:
+    backbone: ResNet18
+    header_mode: big
+    lr: 0.1
+    weight_decay: 0
+    drop:
+      type: point
+      val:
+        - 50
+        - 100
+        - 125
+  pretrained: ImageNet
 optim:
   type: SGD
   lr: 0.1
-  epochs: 1
+  lr_adapter: 0.1
+  weight_decay: 0.002
+  epochs: 150
   drop:
+    type: point
+    val:
+      - 50
+      - 100
+      - 125
 ckpt:
 logger:
 params:

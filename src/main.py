@@ -66,7 +66,7 @@ def train(args, model, train_loader, logger, t, device):
                          acc_acc / cnt, acc_task_acc / cnt)
 
             iter_num += 1
-            logger.log(t, iter_num, loss, loss_task, acc, acc_task)
+            #logger.log(t, iter_num, loss, loss_task, acc, acc_task)
 
         model.end_epoch(args, t, e)
     model.end_task(args, t)

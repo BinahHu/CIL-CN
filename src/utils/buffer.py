@@ -40,6 +40,9 @@ class Buffer:
             store_index.append(idx[:self.sub_buffer_size])
         return store_index
 
+    def is_empty(self):
+        return self.buffer_index == 0
+
     def add_data(self, data, labels=None, logits = None, task_labels = None):
         if not self.init:
             self.init_buffer(data, labels, logits, task_labels)
@@ -65,8 +68,8 @@ class Buffer:
         if transform is None: transform = lambda x: x
         res = []
         res.append(torch.stack([transform(ee) for ee in self.data[choice]]))
-        res.append(torch.stack(self.labels[choice]) if self.labels is not None else None)
-        res.append(torch.stack(self.logits[choice]) if self.logits is not None else None)
-        res.append(torch.stack(self.task_labels[choice]) if self.task_labels is not None else None)
+        res.append(self.labels[choice] if self.labels is not None else None)
+        res.append(self.logits[choice] if self.logits is not None else None)
+        res.append(self.task_labels[choice] if self.task_labels is not None else None)
         return res
 
