@@ -7,7 +7,7 @@ model:
   backbone: ResNet18
   header_mode: big
   buffer:
-    size: 500
+    size: 200
     loss: derpp
     alpha: 0.1
     beta: 1.0
@@ -39,5 +39,5 @@ optim:
 ckpt:
 logger:
   root: /home/zhiyuan/CIL-CN/log/
-  name: covnorm_pretrain_wd1e-3_buffer500_lr0.1
+  name: covnorm_pretrain_wd1e-3_buffer200_lr0.1
 params:

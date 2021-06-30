@@ -120,7 +120,7 @@ class CovNorm(Base):
             self.backbone.set_status(i)
             output_list.append(self.backbone(inputs))
         outputs = torch.cat(tuple(output_list), dim=1)
-        TC_pred = self.selector.predict(outputs)
+        TC_pred = self.selector.predict(inputs=inputs, logits=outputs)
         TIL_pred = torch.zeros(labels.shape).to(torch.device(self.args['device']))
         TC_correct = 0
         for i in range(outputs.shape[0]):

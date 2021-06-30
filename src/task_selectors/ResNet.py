@@ -186,8 +186,8 @@ class ResNet(nn.Module):
         out = self.linear(out)
         return out
 
-    def predict(self, x):
-        out = self.forward(x)
+    def predict(self, inputs=None, logits=None):
+        out = self.forward(inputs)
         return out.max(dim=1)
 
 
