@@ -9,6 +9,7 @@ import torch.nn.functional as F
 from torch.nn.functional import relu, avg_pool2d
 from typing import List
 import torchvision
+import re
 
 
 def conv3x3(in_planes: int, out_planes: int, stride: int=1) -> F.conv2d:
@@ -168,6 +169,8 @@ class ResNet(nn.Module):
             pretrained_source = args['model']['pretrained']
             if pretrained_source == 'ImageNet':
                 self.load_ImageNet_pretrained_model()
+            elif pretrained_source == 'ImageNet-800':
+                self.load_ImageNet800_pretrained_model()
 
     def load_ImageNet_pretrained_model(self):
         assert self.header_mode == 'big', "Only standard ResNet18 architecture can load ImageNet pretrained model"
@@ -191,6 +194,21 @@ class ResNet(nn.Module):
         self.layer4[0].conv2.weight.data.copy_(x[7][0].conv2.weight.data)
         self.layer4[1].conv1.weight.data.copy_(x[7][1].conv1.weight.data)
         self.layer4[1].conv2.weight.data.copy_(x[7][1].conv2.weight.data)
+
+        self.freeze_backbone()
+
+    def load_ImageNet800_pretrained_model(self):
+        assert self.header_mode == 'big', "Only standard ResNet18 architecture can load ImageNet pretrained model"
+        res18 = torch.load(self.args['model']['pretrain_model'])
+        res18 = res18['state_dict']
+        prefix = "module.backbone."
+        for name, p in self.named_parameters():
+            if '_group' in name:
+                if 'linear_group' not in name:
+                    task_id = int(re.match(r'.*group\.([0-9]*)\..*', name).group(1))
+                    p.data.copy_(res18[prefix+name.replace("_group.{}.".format(task_id), "_group.0.")].detach().cpu())
+            else:
+                p.data.copy_(res18[prefix+name].data.detach().cpu())
 
         self.freeze_backbone()
 

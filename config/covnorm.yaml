@@ -8,12 +8,13 @@ model:
   header_mode: big
   buffer:
   selector:
-  pretrained: ImageNet
+  pretrained: ImageNet-800
+  pretrain_model: /home/zhiyuan/CIL-CN/saved_models/model_best.pth.tar
 optim:
   type: SGD
   lr: 0.1
   lr_adapter: 0.1
-  weight_decay: 0.0004
+  weight_decay: 0.001
   epochs: 150
   drop:
     type: point
@@ -24,5 +25,5 @@ optim:
 ckpt:
 logger:
   root: /home/zhiyuan/CIL-CN/log/
-  name: covnorm_lr0.1_pretrain_wd4e-4_bz32
+  name: covnorm_wd1e-3_Im800pretrain
 params:
