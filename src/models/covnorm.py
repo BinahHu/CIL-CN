@@ -48,7 +48,7 @@ class CovNorm(Base):
         loss.backward()
         self.opt.step()
 
-        loss_task = torch.zeros(1)
+        loss_task = torch.zeros(1).to(torch.device(self.args['device']))
         task_correct = 0
         task_sample = 0
         if (self.buffer is not None) and (not self.buffer.is_empty()):
@@ -56,6 +56,10 @@ class CovNorm(Base):
                 self.selector_opt.zero_grad()
                 buf_inputs, buf_labels, buf_logits, _ = self.buffer.get_data(
                     self.args['model']['buffer']['batch_size'], transform=self.transform)
+                buf_inputs = buf_inputs.to(torch.device(self.args['device']))
+                buf_labels = buf_labels.to(torch.device(self.args['device']))
+                buf_logits = buf_logits.to(torch.device(self.args['device']))
+
                 buf_outputs = self.selector(buf_inputs)
                 loss_task += self.args['model']['buffer']['alpha'] * F.mse_loss(buf_outputs, buf_logits)
 
@@ -65,6 +69,8 @@ class CovNorm(Base):
 
                 buf_inputs, buf_labels, _, _ = self.buffer.get_data(
                     self.args['model']['buffer']['batch_size'], transform=self.transform)
+                buf_inputs = buf_inputs.to(torch.device(self.args['device']))
+                buf_labels = buf_labels.to(torch.device(self.args['device']))
                 buf_outputs = self.selector(buf_inputs)
                 loss_task += self.args['model']['buffer']['beta'] * self.loss(buf_outputs, buf_labels)
 

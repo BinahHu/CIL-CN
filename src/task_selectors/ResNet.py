@@ -8,6 +8,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.nn.functional import relu, avg_pool2d
 from typing import List
+import torchvision
 
 
 def conv3x3(in_planes: int, out_planes: int, stride: int=1) -> F.conv2d:
@@ -94,7 +95,7 @@ class ResNet(nn.Module):
     """
 
     def __init__(self, block: BasicBlock, num_blocks: List[int],
-                 num_classes: int, nf: int, header_mode = 'small') -> None:
+                 num_classes: int, nf: int, header_mode = 'small', args=None) -> None:
         """
         Instantiates the layers of the network.
         :param block: the basic ResNet block
@@ -121,6 +122,36 @@ class ResNet(nn.Module):
                                        self.layer4
                                        )
         self.classifier = self.linear
+
+        if args is not None and 'pretrained' in args['model']['selector'] and args['model']['selector']['pretrained'] is not None:
+            pretrained_source = args['model']['selector']['pretrained']
+            if pretrained_source == 'ImageNet':
+                self.load_ImageNet_pretrained_model()
+
+    def load_ImageNet_pretrained_model(self):
+        assert self.header_mode == 'big', "Only standard ResNet18 architecture can load ImageNet pretrained model"
+        res18 = torchvision.models.resnet18(pretrained=True)
+
+        x = list(res18.children())
+        self.head.conv1.weight.data.copy_(x[0].weight.data)
+        self.layer1[0].conv1.weight.data.copy_(x[4][0].conv1.weight.data)
+        self.layer1[0].conv2.weight.data.copy_(x[4][0].conv2.weight.data)
+        self.layer1[1].conv1.weight.data.copy_(x[4][1].conv1.weight.data)
+        self.layer1[1].conv2.weight.data.copy_(x[4][1].conv2.weight.data)
+        self.layer2[0].conv1.weight.data.copy_(x[5][0].conv1.weight.data)
+        self.layer2[0].conv2.weight.data.copy_(x[5][0].conv2.weight.data)
+        self.layer2[1].conv1.weight.data.copy_(x[5][1].conv1.weight.data)
+        self.layer2[1].conv2.weight.data.copy_(x[5][1].conv2.weight.data)
+        self.layer3[0].conv1.weight.data.copy_(x[6][0].conv1.weight.data)
+        self.layer3[0].conv2.weight.data.copy_(x[6][0].conv2.weight.data)
+        self.layer3[1].conv1.weight.data.copy_(x[6][1].conv1.weight.data)
+        self.layer3[1].conv2.weight.data.copy_(x[6][1].conv2.weight.data)
+        self.layer4[0].conv1.weight.data.copy_(x[7][0].conv1.weight.data)
+        self.layer4[0].conv2.weight.data.copy_(x[7][0].conv2.weight.data)
+        self.layer4[1].conv1.weight.data.copy_(x[7][1].conv1.weight.data)
+        self.layer4[1].conv2.weight.data.copy_(x[7][1].conv2.weight.data)
+
+        self.freeze_backbone()
 
     def _make_layer(self, block: BasicBlock, planes: int,
                     num_blocks: int, stride: int) -> nn.Module:
@@ -171,4 +202,4 @@ def resnet18(args, nclasses: int, nf: int=64) -> ResNet:
     if 'header_mode' in args['model']['selector'] and args['model']['selector']['header_mode'] is not None:
         assert args['model']['selector']['header_mode'] in ['big', 'small']
         header_mode = args['model']['selector']['header_mode']
-    return ResNet(BasicBlock, [2, 2, 2, 2], nclasses, nf, header_mode=header_mode)
+    return ResNet(BasicBlock, [2, 2, 2, 2], nclasses, nf, header_mode=header_mode, args=args)

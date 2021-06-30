@@ -39,5 +39,5 @@ optim:
 ckpt:
 logger:
   root: /home/zhiyuan/CIL-CN/log/
-  name: covnorm_lr0.1_pretrain_wd4e-4_bz32
+  name: covnorm_pretrain_wd1e-3_buffer500_lr0.1
 params:
