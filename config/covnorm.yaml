@@ -15,14 +15,9 @@ model:
   selector:
     backbone: ResNet18
     header_mode: big
-    lr: 0.1
+    lr: 0.03
     weight_decay: 0
     drop:
-      type: point
-      val:
-        - 50
-        - 100
-        - 125
   pretrained: ImageNet
 optim:
   type: SGD
@@ -39,5 +34,5 @@ optim:
 ckpt:
 logger:
   root: /home/zhiyuan/CIL-CN/log/
-  name: covnorm_pretrain_wd1e-3_buffer200_lr0.1
+  name: covnorm_pretrain_wd1e-3_buffer200_lr0.03_nodrop
 params:

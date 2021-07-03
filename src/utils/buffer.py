@@ -9,6 +9,7 @@ class Buffer:
         self.sub_buffer_size = self.buffer_size // self.task_num
         self.sub_dataset_size = args['dataset']['sub_set_size']
         self.task_id = 0
+        self.device = args['device']
 
         self.store_index = self.gen_index()
         self.task_index = [0] * self.task_num
@@ -25,11 +26,11 @@ class Buffer:
     def init_buffer(self, data, labels, logits, task_labels):
         self.data = torch.zeros((self.buffer_size, *data.shape[1:]), dtype=data.dtype)
         if labels is not None:
-            self.labels = torch.zeros((self.buffer_size, *labels.shape[1:]), dtype=labels.dtype)
+            self.labels = torch.zeros((self.buffer_size, *labels.shape[1:]), dtype=labels.dtype, device=self.device)
         if logits is not None:
-            self.logits = torch.zeros((self.buffer_size, *logits.shape[1:]), dtype=logits.dtype)
+            self.logits = torch.zeros((self.buffer_size, *logits.shape[1:]), dtype=logits.dtype, device=self.device)
         if task_labels is not None:
-            self.task_labels = torch.zeros((self.buffer_size, *task_labels.shape[1:]), dtype=task_labels.dtype)
+            self.task_labels = torch.zeros((self.buffer_size, *task_labels.shape[1:]), dtype=task_labels.dtype, device=self.device)
         self.init = True
 
     def gen_index(self):
@@ -67,7 +68,7 @@ class Buffer:
         choice = np.random.choice(self.buffer_index, size=size, replace=False)
         if transform is None: transform = lambda x: x
         res = []
-        res.append(torch.stack([transform(ee) for ee in self.data[choice]]))
+        res.append(torch.stack([transform(ee) for ee in self.data[choice]]).to(self.device))
         res.append(self.labels[choice] if self.labels is not None else None)
         res.append(self.logits[choice] if self.logits is not None else None)
         res.append(self.task_labels[choice] if self.task_labels is not None else None)

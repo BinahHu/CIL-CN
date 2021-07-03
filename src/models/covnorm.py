@@ -6,9 +6,8 @@ import task_selectors.default as default
 import task_selectors.ResNet as resnet
 import utils.buffer as buffer
 from torch.nn import functional as F
-
 import backbone.ResNet_Adapter as ResNet_Adapter
-
+import time
 
 
 class CovNorm(Base):
@@ -51,14 +50,17 @@ class CovNorm(Base):
         loss_task = torch.zeros(1).to(torch.device(self.args['device']))
         task_correct = 0
         task_sample = 0
+        task_outputs = None if self.buffer is None else self.selector(inputs)
         if (self.buffer is not None) and (not self.buffer.is_empty()):
             if self.buffer_loss == 'derpp':
                 self.selector_opt.zero_grad()
+                loss_task += self.loss(task_outputs, task_labels)
+                task_pred = task_outputs.argmax(dim=1)
+                task_correct += (task_pred == task_labels).sum().item()
+                task_sample += task_labels.shape[0]
+
                 buf_inputs, buf_labels, buf_logits, _ = self.buffer.get_data(
                     self.args['model']['buffer']['batch_size'], transform=self.transform)
-                buf_inputs = buf_inputs.to(torch.device(self.args['device']))
-                buf_labels = buf_labels.to(torch.device(self.args['device']))
-                buf_logits = buf_logits.to(torch.device(self.args['device']))
 
                 buf_outputs = self.selector(buf_inputs)
                 loss_task += self.args['model']['buffer']['alpha'] * F.mse_loss(buf_outputs, buf_logits)
@@ -69,8 +71,6 @@ class CovNorm(Base):
 
                 buf_inputs, buf_labels, _, _ = self.buffer.get_data(
                     self.args['model']['buffer']['batch_size'], transform=self.transform)
-                buf_inputs = buf_inputs.to(torch.device(self.args['device']))
-                buf_labels = buf_labels.to(torch.device(self.args['device']))
                 buf_outputs = self.selector(buf_inputs)
                 loss_task += self.args['model']['buffer']['beta'] * self.loss(buf_outputs, buf_labels)
 
@@ -81,19 +81,15 @@ class CovNorm(Base):
                 loss_task.backward()
                 self.selector_opt.step()
 
-        buf_outputs = self.selector(inputs)
 
         pred = outputs.argmax(dim=1)
         correct = (pred == labels).sum().item()
         acc = correct / labels.shape[0]
 
-        task_pred = buf_outputs.argmax(dim=1)
-        task_correct += (task_pred == task_labels).sum().item()
-        task_sample += task_labels.shape[0]
-        task_acc = task_correct / task_sample
 
+        task_acc = task_correct / task_sample if task_sample > 0 else 0
         if self.buffer is not None:
-            self.buffer.add_data(data=not_aug_inputs, labels=task_labels, logits=buf_outputs.data)
+            self.buffer.add_data(data=not_aug_inputs, labels=task_labels, logits=task_outputs.data)
 
         return loss.item(), loss_task.item(), acc, task_acc
 
