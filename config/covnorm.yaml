@@ -7,17 +7,18 @@ model:
   backbone: ResNet18
   header_mode: big
   buffer:
+    mode: ring
     size: 200
     loss: derpp
     alpha: 0.1
     beta: 1.0
     batch_size: 32
   selector:
-    backbone: ResNet18
+    backbone: ResNet18_full
     header_mode: big
     lr: 0.03
     weight_decay: 0
-    pretrained: ImageNet-800
+    pretrained:
     pretrain_model: /home/zhiyuan/CIL-CN/saved_models/model_best.pth.tar
     drop:
   pretrained: ImageNet
@@ -36,5 +37,5 @@ optim:
 ckpt:
 logger:
   root: /home/zhiyuan/CIL-CN/log/
-  name: covnorm_pretrain_wd1e-3_buffer200_lr0.03_nodrop
+  name: covnorm_pretrain_wd1e-3_buffer200_lr0.03_nodrop_full
 params:

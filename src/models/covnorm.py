@@ -4,10 +4,10 @@ from models.base import Base
 from torch.optim import SGD as optimSGD
 import task_selectors.default as default
 import task_selectors.ResNet as resnet
+import task_selectors.ResNet_full as resnet_full
 import utils.buffer as buffer
 from torch.nn import functional as F
 import backbone.ResNet_Adapter as ResNet_Adapter
-import time
 
 
 class CovNorm(Base):
@@ -34,14 +34,20 @@ class CovNorm(Base):
         return None, None
 
     def build_selector(self):
-        if 'backbone' in self.args['model']['selector'] and self.args['model']['selector']['backbone'] == 'ResNet18':
-            return resnet.resnet18(args=self.args, nclasses=self.args['dataset']['task_num'])
+        if 'backbone' in self.args['model']['selector']:
+            self.selector_backbone = self.args['model']['selector']['backbone']
+            if self.selector_backbone == 'ResNet18':
+                return resnet.resnet18(args=self.args, nclasses=self.args['dataset']['task_num'])
+            elif self.selector_backbone == 'ResNet18_full':
+                return resnet_full.resnet18(args=self.args, nclasses=self.args['dataset']['class_num'])
         return default.DefaultSelector(self.args['dataset']['task_num'], self.args['dataset']['class_num'])
 
     def observe(self, inputs, labels, not_aug_inputs=None, logits=None):
         self.opt.zero_grad()
         outputs = self.backbone(inputs)
         task_labels = labels // self.class_per_task
+        if self.selector_backbone == 'ResNet18_full':
+            task_labels = labels
         labels = labels - self.task_id * self.class_per_task
         loss = self.loss(outputs, labels)
         loss.backward()

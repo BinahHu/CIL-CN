@@ -90,7 +90,7 @@ class Head(nn.Module):
             x = F.interpolate(x, [256, 256], mode='bilinear')
             return self.maxpool(relu(self.bn1(self.conv1(x))))
 
-class ResNet(nn.Module):
+class ResNet_full(nn.Module):
     """
     ResNet network architecture. Designed for complex datasets.
     """
@@ -104,10 +104,11 @@ class ResNet(nn.Module):
         :param num_classes: the number of output classes
         :param nf: the number of filters
         """
-        super(ResNet, self).__init__()
+        super(ResNet_full, self).__init__()
         self.in_planes = nf
         self.block = block
         self.num_classes = num_classes
+        self.class_per_task = args['dataset']['class_num'] // args['dataset']['task_num']
         self.nf = nf
         self.header = Head(nf, header_mode=header_mode)
         self.header_mode = header_mode
@@ -202,10 +203,12 @@ class ResNet(nn.Module):
 
     def predict(self, inputs=None, logits=None):
         out = self.forward(inputs)
-        return out.argmax(dim=1)
+        max_unit = out.argmax(dim=1)
+        max_task = max_unit // self.class_per_task
+        return max_task
 
 
-def resnet18(args, nclasses: int, nf: int=64) -> ResNet:
+def resnet18(args, nclasses: int, nf: int=64) -> ResNet_full:
     """
     Instantiates a ResNet18 network.
     :param nclasses: number of output classes
@@ -216,4 +219,4 @@ def resnet18(args, nclasses: int, nf: int=64) -> ResNet:
     if 'header_mode' in args['model']['selector'] and args['model']['selector']['header_mode'] is not None:
         assert args['model']['selector']['header_mode'] in ['big', 'small']
         header_mode = args['model']['selector']['header_mode']
-    return ResNet(BasicBlock, [2, 2, 2, 2], nclasses, nf, header_mode=header_mode, args=args)
+    return ResNet_full(BasicBlock, [2, 2, 2, 2], nclasses, nf, header_mode=header_mode, args=args)
