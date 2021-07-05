@@ -8,6 +8,8 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.nn.functional import relu, avg_pool2d
 from typing import List
+import torchvision
+import re
 
 
 def conv3x3(in_planes: int, out_planes: int, stride: int=1) -> F.conv2d:
@@ -94,7 +96,7 @@ class ResNet(nn.Module):
     """
 
     def __init__(self, block: BasicBlock, num_blocks: List[int],
-                 num_classes: int, nf: int, header_mode = 'small') -> None:
+                 num_classes: int, nf: int, header_mode = 'small', args=None) -> None:
         """
         Instantiates the layers of the network.
         :param block: the basic ResNet block
@@ -108,6 +110,7 @@ class ResNet(nn.Module):
         self.num_classes = num_classes
         self.nf = nf
         self.header = Head(nf, header_mode=header_mode)
+        self.header_mode = header_mode
         self.layer1 = self._make_layer(block, nf * 1, num_blocks[0], stride=1)
         self.layer2 = self._make_layer(block, nf * 2, num_blocks[1], stride=2)
         self.layer3 = self._make_layer(block, nf * 4, num_blocks[2], stride=2)
@@ -121,6 +124,49 @@ class ResNet(nn.Module):
                                        self.layer4
                                        )
         self.classifier = self.linear
+
+        if args is not None and 'pretrained' in args['model'] and args['model'][
+            'pretrained'] is not None:
+            pretrained_source = args['model']['pretrained']
+            if pretrained_source == 'ImageNet':
+                self.load_ImageNet_pretrained_model()
+            elif pretrained_source == 'ImageNet-800':
+                self.load_ImageNet800_pretrained_model()
+
+    def load_ImageNet_pretrained_model(self):
+        assert self.header_mode == 'big', "Only standard ResNet18 architecture can load ImageNet pretrained model"
+        res18 = torchvision.models.resnet18(pretrained=True)
+        res18_state = res18.state_dict()
+        for name, p in self.named_parameters():
+            if 'linear' not in name:
+                para_name = name
+                if 'header' in para_name:
+                    para_name = re.match(r'header\.(.*)', para_name).group(1)
+                if 'shortcut' in para_name:
+                    para_name = para_name.replace("shortcut", "downsample")
+                p.data.copy_(res18_state[para_name].data)
+
+        self.freeze_backbone(freeze_bn=True)
+
+    def load_ImageNet800_pretrained_model(self):
+        assert self.header_mode == 'big', "Only standard ResNet18 architecture can load ImageNet pretrained model"
+        res18 = torch.load(self.args['model']['pretrain_model'])
+        res18 = res18['state_dict']
+        prefix = "module.backbone."
+        for name, p in self.named_parameters():
+            if 'linear' not in name:
+                p.data.copy_(res18[prefix + name].data.detach().cpu())
+
+        self.freeze_backbone(freeze_bn=False)
+
+    def freeze_backbone(self, freeze_bn=False):
+        for name, p in self.named_parameters():
+            if not ('linear' in name):
+                if freeze_bn:
+                    p.requires_grad = False
+                else:
+                    if not ('bn' in name):
+                        p.requires_grad = False
 
     def _make_layer(self, block: BasicBlock, planes: int,
                     num_blocks: int, stride: int) -> nn.Module:
@@ -211,4 +257,4 @@ def resnet18(args, nclasses: int, nf: int=64) -> ResNet:
     if 'header_mode' in args['model'] and args['model']['header_mode'] is not None:
         assert args['model']['header_mode'] in ['big', 'small']
         header_mode = args['model']['header_mode']
-    return ResNet(BasicBlock, [2, 2, 2, 2], nclasses, nf, header_mode=header_mode)
+    return ResNet(BasicBlock, [2, 2, 2, 2], nclasses, nf, header_mode=header_mode, args=args)

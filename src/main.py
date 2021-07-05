@@ -45,6 +45,7 @@ def train(args, model, train_loader, logger, t, device):
     cnt = 0
     iter_num = 0
     for e in range(args['optim']['epochs']):
+        break
         model.begin_epoch(args, t, e)
         for i, data in enumerate(train_loader):
             logits = None

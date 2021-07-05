@@ -9,7 +9,8 @@ file_class_pair = {'ccll':'CCLL',
 '''
 file_class_pair = {'sgd':'SGD',
                    'joint':'Joint',
-                   'covnorm':'CovNorm'}
+                   'covnorm':'CovNorm',
+                   'multi': 'Multi'}
 
 models = {}
 for k,v in file_class_pair.items():
