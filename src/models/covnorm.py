@@ -27,6 +27,7 @@ class CovNorm(Base):
         self.backbone.set_status(0)
 
         self.task_id = 0
+        self.sample_flag = 3
 
     def build_buffer(self):
         if self.args['model']['buffer'] is not None:
@@ -74,6 +75,10 @@ class CovNorm(Base):
                 buf_pred = buf_outputs.argmax(dim=1)
                 task_correct += (buf_pred == buf_labels).sum().item()
                 task_sample += buf_labels.shape[0]
+                if self.sample_flag > 0 and buf_inputs.shape[0] == self.args['model']['buffer']['batch_size']:
+                    print(buf_labels)
+                    print(buf_pred)
+                    self.sample_flag -= 1
 
                 buf_inputs, buf_labels, _, _ = self.buffer.get_data(
                     self.args['model']['buffer']['batch_size'], transform=self.transform)
@@ -140,6 +145,7 @@ class CovNorm(Base):
         return TIL_correct, CIL_correct, TC_correct
 
     def begin_task(self, args, t):
+        self.sample_flag = 3
         self.lr = self.args['optim']['lr']
         self.selector_lr = self.args['model']['selector']['lr']
         if 'lr_adapter' in  self.args['optim'] and self.args['optim']['lr_adapter'] is not None and t > 0:

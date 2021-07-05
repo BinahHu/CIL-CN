@@ -1,5 +1,5 @@
 dataset:
-  type: cifar100
+  type: tinyimg
   root: /home/zhiyuan/CIL-CN/datasets/
   batch_size: 32
 model:
