@@ -4,16 +4,16 @@ dataset:
   batch_size: 32
 model:
   type: multi
-  multi_setting: full
+  multi_setting: cls
   backbone: ResNet18
   header_mode: big
   buffer:
   selector:
-  pretrained:
+  pretrained: ImageNet
   pretrain_model: /home/zhiyuan/CIL-CN/saved_models/model_best.pth.tar
 optim:
   type: SGD
-  lr: 0.03
+  lr: 0.01
   weight_decay: 0.0002
   epochs: 150
   drop:
@@ -25,5 +25,5 @@ optim:
 ckpt:
 logger:
   root: /home/zhiyuan/CIL-CN/log/
-  name: multi_lr0.03_wd2e-4_full
+  name: multi_lr0.01_wd2e-4_cls
 params:
