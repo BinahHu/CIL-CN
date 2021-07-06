@@ -8,14 +8,14 @@ model:
   header_mode: big
   buffer:
     mode: ring
-    size: 200
+    size: 5120
     loss: derpp
     alpha: 0.1
-    beta: 1.0
+    beta: 0.5
     batch_size: 32
   selector:
-    backbone: ResNet18_full
-    header_mode: big
+    backbone: ResNet18
+    header_mode: small
     lr: 0.03
     weight_decay: 0
     pretrained:
@@ -37,5 +37,5 @@ optim:
 ckpt:
 logger:
   root: /home/zhiyuan/CIL-CN/log/
-  name: covnorm_pretrain_wd1e-3_buffer200_lr0.03_nodrop_full
+  name: covnorm_pretrain_wd1e-3_buffer5120_lr0.03_nodrop_smallhead
 params:
