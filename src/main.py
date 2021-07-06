@@ -112,6 +112,14 @@ def main():
         train_loader = train_loaders[t]
         train(args, model, train_loader, logger, t, args['device'])
         print()
+
+    #Save model
+    if 'save_dir' in args['ckpt'] and args['ckpt']['save_dir'] is not None:
+        backbone_save_path = args['ckpt']['save_dir'] + args['logger']['name'] + '_backbone.pth'
+        torch.save(model.backbone.state_dict(), backbone_save_path)
+        selector_save_path = args['ckpt']['save_dir'] + args['logger']['name'] + '_selector.pth'
+        torch.save(model.selector.state_dict(), selector_save_path)
+
     # Evaluation loop
     TIL = []
     CIL = []
