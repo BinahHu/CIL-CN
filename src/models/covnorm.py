@@ -104,7 +104,7 @@ class CovNorm(Base):
         if 'weight_decay' in self.args['model']['selector'] and self.args['model']['selector']['weight_decay'] is not None:
             wd = self.args['model']['selector']['weight_decay']
         return optimSGD(self.selector.parameters(), lr=self.args['model']['selector']['lr'], weight_decay=wd,
-                        momentum=0.9)
+                        momentum=0)
 
     def build_optim(self, task_id=0):
         wd = 4e-3

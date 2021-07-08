@@ -2,6 +2,7 @@ from datetime import datetime
 import sys
 import os
 from torch.utils.tensorboard import SummaryWriter
+import json
 
 
 class Logger:
@@ -13,6 +14,7 @@ class Logger:
         if not(self.name == 'test'):
             assert (not os.path.exists(self.path)), "Model name already used!"
             os.mkdir(self.path)
+            json.dump(args, open(os.path.join(self.path, 'config.json'), 'w'))
         self.logger = SummaryWriter(log_dir=self.path)
 
     def log(self, t, i, loss, loss_task, acc, acc_task):
