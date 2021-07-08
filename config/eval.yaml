@@ -1,0 +1,29 @@
+dataset:
+  type: tinyimg
+  root: /home/zhiyuan/CIL-CN/datasets/
+  batch_size: 32
+model:
+  type: covnorm
+  backbone: ResNet18
+  header_mode: big
+  buffer:
+  selector:
+    backbone: ResNet18
+    header_mode: small
+    lr: 0.03
+    weight_decay: 0
+    pretrained:
+    pretrain_model: /home/zhiyuan/CIL-CN/saved_models/model_best.pth.tar
+    drop:
+  pretrained:
+optim:
+  type: SGD
+  lr: 0.1
+  lr_adapter: 0.1
+  weight_decay: 0.001
+  epochs: 150
+  drop:
+ckpt:
+  backbone: /home/zhiyuan/CIL-CN/saved_models/covnorm_tinyimg_backbone.pth
+  selector: /home/zhiyuan/CIL-CN/saved_models/selector_buffer5120_derpp_tinyimg_backbone.pth
+params:
