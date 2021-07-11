@@ -27,6 +27,7 @@ class CovNorm(Base):
         self.backbone.set_status(0)
 
         self.task_id = 0
+        self.buffer_flag = True
 
     def build_buffer(self):
         if self.args['model']['buffer'] is not None:
@@ -94,7 +95,7 @@ class CovNorm(Base):
 
 
         task_acc = task_correct / task_sample if task_sample > 0 else 0
-        if self.buffer is not None:
+        if self.buffer is not None and self.buffer_flag:
             self.buffer.add_data(data=not_aug_inputs, labels=task_labels, logits=task_outputs.data)
 
         return loss.item(), loss_task.item(), acc, task_acc
@@ -151,6 +152,7 @@ class CovNorm(Base):
         self.opt = self.build_optim(task_id=t)
 
     def begin_epoch(self, args, t, e):
+        self.buffer_flag = True if e == 0 else False
         if args['optim']['drop'] is not None:
             if args['optim']['drop']['type'] == 'point':
                 if e in args['optim']['drop']['val']:

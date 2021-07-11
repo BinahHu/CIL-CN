@@ -97,7 +97,7 @@ def main():
         if train_loaders[t] is None:
             sub_set_size.append(0)
         else:
-            sub_set_size.append(len(train_loaders[t]))
+            sub_set_size.append(len(train_loaders[t].dataset))
     args['dataset']['sub_set_size'] = sub_set_size
 
     #Build model
@@ -114,11 +114,12 @@ def main():
         print()
 
     #Save model
-    if 'save_dir' in args['ckpt'] and args['ckpt']['save_dir'] is not None:
-        backbone_save_path = args['ckpt']['save_dir'] + args['logger']['name'] + '_backbone.pth'
-        torch.save(model.backbone.state_dict(), backbone_save_path)
-        selector_save_path = args['ckpt']['save_dir'] + args['logger']['name'] + '_selector.pth'
-        torch.save(model.selector.state_dict(), selector_save_path)
+    if 'save_dir' in args['ckpt']:
+        if args['ckpt']['save_dir'] is not None:
+            backbone_save_path = args['ckpt']['save_dir'] + args['logger']['name'] + '_backbone.pth'
+            torch.save(model.backbone.state_dict(), backbone_save_path)
+            selector_save_path = args['ckpt']['save_dir'] + args['logger']['name'] + '_selector.pth'
+            torch.save(model.selector.state_dict(), selector_save_path)
 
     # Evaluation loop
     TIL = []

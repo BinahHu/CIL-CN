@@ -21,8 +21,9 @@ class Selector(Base):
         self.selector = self.build_selector()
         self.buffer, self.buffer_loss = self.build_buffer()
         self.opt = self.build_optim()
-        self.loss = nn.CrossEntropyLoss()
+        self.loss = F.cross_entropy
         self.task_id = 0
+        self.buffer_flag = True
 
     def build_buffer(self):
         if self.args['model']['buffer'] is not None:
@@ -35,7 +36,8 @@ class Selector(Base):
     def observe(self, inputs, labels, not_aug_inputs=None, logits=None):
         self.opt.zero_grad()
         outputs = self.backbone(inputs)
-        labels = labels // self.class_per_task
+        if self.selector_backbone == 'ResNet18':
+            labels = labels // self.class_per_task
         loss = self.loss(outputs, labels)
 
         pred = outputs.argmax(dim=1)
@@ -67,7 +69,7 @@ class Selector(Base):
         acc = correct / sample
 
 
-        if self.buffer is not None:
+        if self.buffer is not None and self.buffer_flag:
             self.buffer.add_data(data=not_aug_inputs, labels=labels, logits=outputs.data)
 
         return loss.item(), 0, acc, 0
@@ -76,7 +78,13 @@ class Selector(Base):
         return optimSGD(self.backbone.parameters(), lr=self.args['optim']['lr'])
 
     def build_backbone(self):
-        return resnet.resnet18(args=self.args, nclasses=self.task_num)
+        if 'backbone' in self.args['model']:
+            self.selector_backbone = self.args['model']['backbone']
+            if self.selector_backbone == 'ResNet18':
+                return resnet.resnet18(args=self.args, nclasses=self.args['dataset']['task_num'])
+            elif self.selector_backbone == 'ResNet18_full':
+                return resnet_full.resnet18(args=self.args, nclasses=self.args['dataset']['class_num'])
+        return default.DefaultSelector(self.args['dataset']['task_num'], self.args['dataset']['class_num'])
 
     def evaluate(self, inputs, labels):
         class_per_task = self.args['dataset']['class_num'] // self.args['dataset']['task_num']
@@ -86,7 +94,14 @@ class Selector(Base):
             gt_task_id = labels[i] // class_per_task
             task_id = TC_pred[i]
             TC_correct += (gt_task_id == task_id)
-        return 0, 0, TC_correct
+
+        if self.selector_backbone == 'ResNet18_full':
+            outputs = self.backbone(inputs)
+            CIL_pred = outputs.argmax(dim=1)
+            CIL_correct = (CIL_pred == labels).sum().item()
+        else:
+            CIL_correct = 0
+        return 0, CIL_correct, TC_correct
 
     def begin_task(self, args, t):
         self.lr = self.args['optim']['lr']
@@ -94,6 +109,7 @@ class Selector(Base):
         self.buffer.set_status(t)
 
     def begin_epoch(self, args, t, e):
+        self.buffer_flag = True if e == 0 else False
         if args['optim']['drop'] is not None:
             if args['optim']['drop']['type'] == 'point':
                 if e in args['optim']['drop']['val']:
