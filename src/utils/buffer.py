@@ -40,8 +40,13 @@ class Buffer:
         self.logits = None
         self.task_labels = None
 
+        self.buffer_flag = True
+
     def set_status(self, task_id):
         self.task_id = task_id
+
+    def set_buffer_flag(self, buffer_flag):
+        self.buffer_flag = buffer_flag
 
     def init_buffer(self, data, labels, logits, task_labels):
         self.data = torch.zeros((self.buffer_size, *data.shape[1:]), dtype=data.dtype)
@@ -73,19 +78,35 @@ class Buffer:
 
         N = data.shape[0]
         t = self.task_id
-        for i in range(N):
-            if self.mode == 'ring':
-                if self.task_index[t] in self.store_index[t]:
-                    self.data[self.buffer_index] = data[i]
-                    if labels is not None:
-                        self.labels[self.buffer_index] = labels[i]
-                    if logits is not None:
-                        self.logits[self.buffer_index] = logits[i]
-                    if task_labels is not None:
-                        self.task_labels[self.buffer_index] = task_labels[i]
-                    self.buffer_index += 1
-                self.task_index[t] += 1
-            elif self.mode == 'reservoir':
+        if self.mode == 'ring':
+            for i in range(N):
+                if self.buffer_flag:
+                    # First epoch
+                    if self.task_index[t] in self.store_index[t]:
+                        self.data[self.buffer_index] = data[i]
+                        if labels is not None:
+                            self.labels[self.buffer_index] = labels[i]
+                        if logits is not None:
+                            self.logits[self.buffer_index] = logits[i]
+                        if task_labels is not None:
+                            self.task_labels[self.buffer_index] = task_labels[i]
+                        self.buffer_index += 1
+                    self.task_index[t] += 1
+                else:
+                    # Second epoch and later
+                    pos = np.random.randint(self.sub_dataset_size[t])
+                    if pos < self.sub_buffer_size:
+                        # Replace
+                        pos += t * self.sub_buffer_size
+                        self.data[pos] = data[i]
+                        if labels is not None:
+                            self.labels[pos] = labels[i]
+                        if logits is not None:
+                            self.logits[pos] = logits[i]
+                        if task_labels is not None:
+                            self.task_labels[pos] = task_labels[i]
+        elif self.mode == 'reservoir':
+            for i in range(N):
                 index = reservoir(self.num_seen_examples, self.buffer_size)
                 self.num_seen_examples += 1
                 if index >= 0:

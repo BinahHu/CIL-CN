@@ -69,7 +69,7 @@ class Selector(Base):
         acc = correct / sample
 
 
-        if self.buffer is not None and self.buffer_flag:
+        if self.buffer is not None:
             self.buffer.add_data(data=not_aug_inputs, labels=labels, logits=outputs.data)
 
         return loss.item(), 0, acc, 0
@@ -110,6 +110,7 @@ class Selector(Base):
 
     def begin_epoch(self, args, t, e):
         self.buffer_flag = True if e == 0 else False
+        self.buffer.set_buffer_flag(buffer_flag=self.buffer_flag)
         if args['optim']['drop'] is not None:
             if args['optim']['drop']['type'] == 'point':
                 if e in args['optim']['drop']['val']:
