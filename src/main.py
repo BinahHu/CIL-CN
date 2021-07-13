@@ -3,6 +3,7 @@ import utils.builder as builder
 import argparse
 import torch
 from utils.logger import progress_bar
+from torch.utils.data import DataLoader
 
 def load_config(config_path):
     with open(config_path, 'r') as f:
@@ -35,7 +36,7 @@ def eval(args, model, val_loader, t, device):
     return TIL_acc, CIL_acc, TC_acc, total
 
 
-def train(args, model, train_loader, logger, t, device):
+def train(args, model, train_loader, dataset, logger, t, device):
     model.train()
     model.begin_task(args, t)
     loss_acc = 0
@@ -69,6 +70,53 @@ def train(args, model, train_loader, logger, t, device):
             logger.log(t, iter_num, loss, loss_task, acc, acc_task)
 
         model.end_epoch(args, t, e)
+
+    if 'rebalance' in args['model'] and t > 0:
+        if args['model']['rebalance'] is not None:
+            print()
+            total_batch_size = args['dataset']['batch_size'] + args['model']['buffer']['batch_size'] * 2
+            buffer_batch_size = int(total_batch_size * t / (2*(t + 1)))
+            task_batch_size = total_batch_size -  2 * buffer_batch_size
+            E = args['optim']['epochs']
+            model.begin_rebalance(t, buffer_batch_size)
+            loss_acc = 0
+            loss_task_acc = 0
+            acc_acc = 0
+            acc_task_acc = 0
+            cnt = 0
+
+
+
+            rebalance_train_loader = DataLoader(dataset.sub_train_datasets[t], batch_size=task_batch_size,
+                                            shuffle=True, num_workers=4)
+            for e in range(args['model']['rebalance']['optim']['epochs']):
+                model.begin_epoch_rebalance(args, t, e)
+                for i, data in enumerate(rebalance_train_loader):
+                    logits = None
+                    if hasattr(rebalance_train_loader.dataset, 'logits'):
+                        inputs, labels, not_aug_inputs, logits = data
+                    else:
+                        inputs, labels, not_aug_inputs = data
+                    inputs = inputs.to(device)
+                    labels = labels.to(device)
+                    loss, loss_task, acc, acc_task = model.observe(inputs, labels, not_aug_inputs, logits)
+
+                    loss_acc += loss
+                    loss_task_acc += loss_task
+                    acc_acc += acc * 100
+                    acc_task_acc += acc_task * 100
+                    cnt += 1
+                    progress_bar(i, len(rebalance_train_loader), e+E, t,
+                                 loss_acc / cnt, loss_task_acc / cnt,
+                                 acc_acc / cnt, acc_task_acc / cnt)
+
+                    iter_num += 1
+                    logger.log(t, iter_num, loss, loss_task, acc, acc_task)
+
+                model.end_epoch_rebalance(args, t, e)
+
+
+            model.end_rebalance(t)
     model.end_task(args, t)
 
 def main():
@@ -110,7 +158,7 @@ def main():
         if args['model']['type'] == 'joint' and t < args['dataset']['task_num'] - 1:
             continue
         train_loader = train_loaders[t]
-        train(args, model, train_loader, logger, t, args['device'])
+        train(args, model, train_loader, dataset, logger, t, args['device'])
         print()
 
     #Save model

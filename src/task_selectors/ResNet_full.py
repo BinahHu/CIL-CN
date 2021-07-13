@@ -159,6 +159,21 @@ class ResNet_full(nn.Module):
 
         self.freeze_backbone(freeze_bn = False)
 
+    def freeze_feature(self):
+        for name, p in self.named_parameters():
+            if 'classifier' not in name:
+                p.requires_grad = False
+
+    def unfreeze_feature(self):
+        for name, p in self.named_parameters():
+            if 'classifier' not in name:
+                p.requires_grad = True
+
+    def get_classifier_params(self):
+        for name, p in self.named_parameters():
+            if 'classifier' in name:
+                yield p
+
     def freeze_backbone(self, freeze_bn = False):
         for name, p in self.named_parameters():
             if not('linear' in name):

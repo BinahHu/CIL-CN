@@ -6,6 +6,8 @@ model:
   type: selector
   backbone: ResNet18_full
   header_mode: small
+  pretrained:
+  pretrain_model: /home/zhiyuan/CIL-CN/saved_models/model_best.pth.tar
   selector:
     header_mode: small
     pretrained:
@@ -16,17 +18,23 @@ model:
     alpha: 0.1
     beta: 0.5
     batch_size: 32
-  pretrained:
-  pretrain_model: /home/zhiyuan/CIL-CN/saved_models/model_best.pth.tar
+  rebalance:
+    type: decouple
+    optim:
+      type: SGD
+      lr: 0.03
+      weight_decay: 0
+      epochs: 10
+      drop:
 optim:
   type: SGD
   lr: 0.03
   weight_decay: 0
-  epochs: 100
+  epochs: 90
   drop:
 ckpt:
   save_dir: /home/zhiyuan/CIL-CN/saved_models/
 logger:
   root: /home/zhiyuan/CIL-CN/log/
-  name: test2
+  name: test3
 params:

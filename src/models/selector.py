@@ -23,6 +23,7 @@ class Selector(Base):
         self.opt = self.build_optim()
         self.loss = F.cross_entropy
         self.task_id = 0
+        self.buffer_batch_size = self.args['model']['buffer']['batch_size']
         self.buffer_flag = True
 
     def build_buffer(self):
@@ -46,7 +47,7 @@ class Selector(Base):
 
         if (self.buffer is not None) and (not self.buffer.is_empty()):
             buf_inputs, buf_labels, buf_logits, _ = self.buffer.get_data(
-                self.args['model']['buffer']['batch_size'], transform=self.transform)
+                self.buffer_batch_size, transform=self.transform)
             buf_outputs = self.backbone(buf_inputs)
             loss += self.args['model']['buffer']['alpha'] * F.mse_loss(buf_outputs, buf_logits)
 
@@ -55,7 +56,7 @@ class Selector(Base):
             sample += buf_labels.shape[0]
 
             buf_inputs, buf_labels, _, _ = self.buffer.get_data(
-                self.args['model']['buffer']['batch_size'], transform=self.transform)
+                self.buffer_batch_size, transform=self.transform)
             buf_outputs = self.backbone(buf_inputs)
             loss += self.args['model']['buffer']['beta'] * self.loss(buf_outputs, buf_labels)
 
@@ -67,7 +68,6 @@ class Selector(Base):
         self.opt.step()
 
         acc = correct / sample
-
 
         if self.buffer is not None and self.buffer_flag:
             self.buffer.add_data(data=not_aug_inputs, labels=labels, logits=outputs.data)
@@ -117,3 +117,24 @@ class Selector(Base):
                     new_lr = self.lr
                     for i in range(len(self.opt.param_groups)):
                         self.opt.param_groups[i]['lr'] = new_lr
+
+    def begin_rebalance(self, t, buffer_batch_size):
+        self.buffer_batch_size = buffer_batch_size
+        self.backbone.freeze_feature()
+        self.opt = optimSGD(self.backbone.get_classifier_params(), lr=self.args['model']['rebalance']['optim']['lr'])
+
+    def end_rebalance(self, t):
+        self.backbone.unfreeze_feature()
+        self.buffer_batch_size = self.args['model']['buffer']['batch_size']
+        self.opt = self.build_optim()
+
+    def begin_epoch_rebalance(self, t, e):
+        self.buffer_flag = False
+        if self.args['model']['rebalance']['optim']['drop'] is not None:
+            if self.args['model']['rebalance']['optim']['drop']['type'] == 'point':
+                if e in self.args['model']['rebalance']['optim']['drop']['val']:
+                    self.lr = self.lr * 0.1
+                    new_lr = self.lr
+                    for i in range(len(self.opt.param_groups)):
+                        self.opt.param_groups[i]['lr'] = new_lr
+
