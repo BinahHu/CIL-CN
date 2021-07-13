@@ -123,7 +123,6 @@ class ResNet(nn.Module):
                                        self.layer3,
                                        self.layer4
                                        )
-        self.classifier = self.linear
 
         if args is not None and 'pretrained' in args['model']['selector'] and args['model']['selector']['pretrained'] is not None:
             pretrained_source = args['model']['selector']['pretrained']
@@ -160,17 +159,17 @@ class ResNet(nn.Module):
 
     def freeze_feature(self):
         for name, p in self.named_parameters():
-            if 'classifier' not in name:
+            if 'linear' not in name:
                 p.requires_grad = False
 
     def unfreeze_feature(self):
         for name, p in self.named_parameters():
-            if 'classifier' not in name:
+            if 'linear' not in name:
                 p.requires_grad = True
 
     def get_classifier_params(self):
         for name, p in self.named_parameters():
-            if 'classifier' in name:
+            if 'linear' in name:
                 yield p
 
     def freeze_backbone(self, freeze_bn = False):
