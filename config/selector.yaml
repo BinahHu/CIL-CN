@@ -4,7 +4,7 @@ dataset:
   batch_size: 32
 model:
   type: selector
-  backbone: ResNet18_full
+  backbone: ResNet18
   header_mode: small
   selector:
     header_mode: small
@@ -21,12 +21,12 @@ model:
 optim:
   type: SGD
   lr: 0.03
-  weight_decay: 0
+  weight_decay: 0.0002
   epochs: 100
   drop:
 ckpt:
-  save_dir: /home/zhiyuan/CIL-CN/saved_models/
+  save_dir_x: /home/zhiyuan/CIL-CN/saved_models/
 logger:
   root: /home/zhiyuan/CIL-CN/log/
-  name: test2
+  name: selector_wd4e-2_nodrop
 params:
