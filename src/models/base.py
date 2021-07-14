@@ -32,14 +32,14 @@ class Base(nn.Module):
     def end_epoch(self, args, t, e):
         pass
 
-    def begin_rebalance(self, t, buffer_batch_size):
+    def begin_rebalance(self, args, t):
         pass
 
-    def end_rebalance(self, t):
+    def end_rebalance(self, args, t):
         pass
 
-    def begin_epoch_rebalance(self, t, e):
+    def begin_epoch_rebalance(self, args, t, e):
         pass
 
-    def end_epoch_rebalance(self, t, e):
+    def end_epoch_rebalance(self, args, t, e):
         pass

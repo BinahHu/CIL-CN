@@ -36,14 +36,19 @@ class Selector(Base):
 
     def observe(self, inputs, labels, not_aug_inputs=None, logits=None):
         self.opt.zero_grad()
-        outputs = self.backbone(inputs)
+        correct = 0
+        sample = 0
+        loss = 0
         if self.selector_backbone == 'ResNet18':
             labels = labels // self.class_per_task
-        loss = self.loss(outputs, labels)
+        outputs = self.backbone(inputs)
 
-        pred = outputs.argmax(dim=1)
-        correct = (pred == labels).sum().item()
-        sample = labels.shape[0]
+        if not self.rebalance_flag:
+            loss += self.loss(outputs, labels)
+
+            pred = outputs.argmax(dim=1)
+            correct += (pred == labels).sum().item()
+            sample += labels.shape[0]
 
         if (self.buffer is not None) and (not self.buffer.is_empty()):
             buf_inputs, buf_labels, buf_logits, _ = self.buffer.get_data(
@@ -105,6 +110,7 @@ class Selector(Base):
         return 0, CIL_correct, TC_correct
 
     def begin_task(self, args, t):
+        self.rebalance_flag = False
         self.lr = self.args['optim']['lr']
         self.task_id = t
         self.buffer.set_status(t)
@@ -120,21 +126,22 @@ class Selector(Base):
                     for i in range(len(self.opt.param_groups)):
                         self.opt.param_groups[i]['lr'] = new_lr
 
-    def begin_rebalance(self, t, buffer_batch_size):
-        self.buffer_batch_size = buffer_batch_size
+    def begin_rebalance(self, args, t):
+        self.rebalance_flag = True
         self.backbone.freeze_feature()
-        self.opt = optimSGD(self.backbone.get_classifier_params(), lr=self.args['model']['rebalance']['optim']['lr'])
+        self.opt = optimSGD(self.backbone.get_classifier_params(), lr=args['model']['rebalance']['optim']['lr'])
 
-    def end_rebalance(self, t):
+    def end_rebalance(self, args, t):
+        self.rebalance_flag = False
         self.backbone.unfreeze_feature()
-        self.buffer_batch_size = self.args['model']['buffer']['batch_size']
         self.opt = self.build_optim()
 
-    def begin_epoch_rebalance(self, t, e):
+    def begin_epoch_rebalance(self, args, t, e):
         self.buffer_flag = False
-        if self.args['model']['rebalance']['optim']['drop'] is not None:
-            if self.args['model']['rebalance']['optim']['drop']['type'] == 'point':
-                if e in self.args['model']['rebalance']['optim']['drop']['val']:
+        self.buffer.set_buffer_flag(buffer_flag=self.buffer_flag)
+        if args['model']['rebalance']['optim']['drop'] is not None:
+            if args['model']['rebalance']['optim']['drop']['type'] == 'point':
+                if e in args['model']['rebalance']['optim']['drop']['val']:
                     self.lr = self.lr * 0.1
                     new_lr = self.lr
                     for i in range(len(self.opt.param_groups)):

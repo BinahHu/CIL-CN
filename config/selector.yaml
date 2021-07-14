@@ -12,7 +12,7 @@ model:
     header_mode: small
     pretrained:
   buffer:
-    mode: ring
+    mode: reservoir
     size: 5120
     loss: derpp
     alpha: 0.1
@@ -33,8 +33,8 @@ optim:
   epochs: 90
   drop:
 ckpt:
-  save_dir: /home/zhiyuan/CIL-CN/saved_models/
+  save_dir:
 logger:
   root: /home/zhiyuan/CIL-CN/log/
-  name: test3
+  name: test
 params:
