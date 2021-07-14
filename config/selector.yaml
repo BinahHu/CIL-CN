@@ -4,13 +4,13 @@ dataset:
   batch_size: 32
 model:
   type: selector
-  backbone: ResNet18
+  backbone: ResNet18_full
   header_mode: small
   selector:
     header_mode: small
     pretrained:
   buffer:
-    mode: ring
+    mode: reservoir
     size: 5120
     loss: derpp
     alpha: 0.1
@@ -21,12 +21,12 @@ model:
 optim:
   type: SGD
   lr: 0.03
-  weight_decay: 0.0002
+  weight_decay: 0
   epochs: 100
   drop:
 ckpt:
   save_dir_x: /home/zhiyuan/CIL-CN/saved_models/
 logger:
   root: /home/zhiyuan/CIL-CN/log/
-  name: selector_wd4e-2_nodrop
+  name: selector_tinyimg_org
 params:

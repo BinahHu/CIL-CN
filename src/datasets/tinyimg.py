@@ -105,9 +105,9 @@ class SeqTinyImg:
         targets = []
         for num in range(20):
             data.append(np.load(os.path.join(root, 'processed/x_train_{:02d}.npy'.format(num+1))))
-            data.append(np.load(os.path.join(root, 'processed/x_val_{:02d}.npy'.format(num+1))))
+            #data.append(np.load(os.path.join(root, 'processed/x_val_{:02d}.npy'.format(num+1))))
             targets.append(np.load(os.path.join(root, 'processed/y_train_{:02d}.npy'.format(num + 1))))
-            targets.append(np.load(os.path.join(root, 'processed/y_val_{:02d}.npy'.format(num + 1))))
+            #targets.append(np.load(os.path.join(root, 'processed/y_val_{:02d}.npy'.format(num + 1))))
 
         data = np.concatenate(data)
         targets = np.concatenate(targets)
