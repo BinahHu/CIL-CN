@@ -61,6 +61,7 @@ def split_by_task(targets, task_num, class_per_task, test_prec = 0.1):
     for i in range(len(targets)):
         v = targets[i] // class_per_task
         masks[v].append(i)
+    np.random.seed(0)
     for i in range(task_num):
         mask = np.array(masks[i])
         np.random.shuffle(mask)
