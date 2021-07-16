@@ -123,6 +123,7 @@ class ResNet(nn.Module):
                                        self.layer3,
                                        self.layer4
                                        )
+        self.classifier = self.linear
 
         if args is not None and 'pretrained' in args['model']['selector'] and args['model']['selector']['pretrained'] is not None:
             pretrained_source = args['model']['selector']['pretrained']
