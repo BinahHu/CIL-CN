@@ -26,6 +26,15 @@ class CovNorm(Base):
     def build_selector(self):
         return default.DefaultSelector(self.args['dataset']['task_num'], self.args['dataset']['class_num'])
 
+    def build_optim(self, task_id=0):
+        wd = 0
+        if 'weight_decay' in self.args['optim'] and self.args['optim']['weight_decay'] is not None:
+            wd = self.args['optim']['weight_decay']
+        return optimSGD(self.backbone.get_parameters(task_id), lr=self.args['optim']['lr'], weight_decay=wd, momentum=0.9)
+
+    def build_backbone(self):
+        return ResNet_Adapter.resnet18_adapter(args=self.args, task_num=self.task_num, class_per_task=self.class_per_task)
+
     def observe(self, inputs, labels, non_aug_input=None, logits=None):
         self.opt.zero_grad()
         outputs = self.backbone(inputs)
@@ -39,15 +48,6 @@ class CovNorm(Base):
         acc = correct / labels.shape[0]
 
         return loss.item(), 0, acc, 0
-
-    def build_optim(self, task_id=0):
-        wd = 4e-3
-        if 'weight_decay' in self.args['optim'] and self.args['optim']['weight_decay'] is not None:
-            wd = self.args['optim']['weight_decay']
-        return optimSGD(self.backbone.get_parameters(task_id), lr=self.args['optim']['lr'], weight_decay=wd, momentum=0.9)
-
-    def build_backbone(self):
-        return ResNet_Adapter.resnet18_adapter(args=self.args, task_num=self.task_num, class_per_task=self.class_per_task)
 
     def evaluate(self, inputs, labels):
         class_per_task = self.args['dataset']['class_num'] // self.args['dataset']['task_num']
@@ -75,8 +75,9 @@ class CovNorm(Base):
 
     def begin_task(self, args, t):
         self.lr = self.args['optim']['lr']
-        if 'lr_adapter' in  self.args['optim'] and self.args['optim']['lr_adapter'] is not None and t > 0:
-            self.lr = self.args['optim']['lr_adapter']
+        if 'lr_adapter' in  self.args['optim']:
+            if self.args['optim']['lr_adapter'] is not None and t > 0:
+                self.lr = self.args['optim']['lr_adapter']
         self.task_id = t
         self.backbone.set_status(t)
 
