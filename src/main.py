@@ -3,6 +3,7 @@ import utils.builder as builder
 import argparse
 import torch
 from utils.logger import progress_bar
+from datasets import data as idata
 
 def load_config(config_path):
     with open(config_path, 'r') as f:
@@ -48,10 +49,11 @@ def train(args, model, train_loader, logger, t, device):
         model.begin_epoch(args, t, e)
         for i, data in enumerate(train_loader):
             logits = None
+            not_aug_inputs = None
             if hasattr(train_loader.dataset, 'logits'):
-                inputs, labels, not_aug_inputs, logits = data
+                inputs, labels, logits = data
             else:
-                inputs, labels, not_aug_inputs = data
+                inputs, labels = data
             inputs = inputs.to(device)
             labels = labels.to(device)
             loss, loss_task, acc, acc_task = model.observe(inputs, labels, not_aug_inputs, logits)
@@ -85,6 +87,7 @@ def main():
     # Build logger
     logger = builder.build_logger(args)
 
+    '''
     #Build datasets
     dataset, transformer, task_num, class_num = builder.build_dataset(args)
     args['dataset']['task_num'] = task_num
@@ -99,9 +102,37 @@ def main():
         else:
             sub_set_size.append(len(train_loaders[t]))
     args['dataset']['sub_set_size'] = sub_set_size
+    '''
+
+    inc_dataset = idata.IncrementalDataset(
+        trial_i=2,
+        dataset_name='cifar100',
+        random_order=False,
+        shuffle=True,
+        batch_size=32,
+        workers=8,
+        validation_split=0,
+        resampling=False,
+        increment=10,
+        data_folder='/home/zhiyuan/CIL-CN/datasets/',
+        start_class=0,
+    )
+
+    task_num = 10
+    class_num = 100
+    args['dataset']['task_num'] = task_num
+    args['dataset']['class_num'] = class_num
+
+
+    train_loaders = []
+    val_loaders = []
+    for i in range(task_num):
+        task_info, train_loader, val_loader, test_loader = inc_dataset.new_task()
+        train_loaders.append(train_loader)
+        val_loaders.append(test_loader)
 
     #Build model
-    model = builder.build_model(args, transformer)
+    model = builder.build_model(args, transformer=None)
     model.to(torch.device(device))
 
 
@@ -116,10 +147,10 @@ def main():
     #Save model
     if 'save_dir' in args['ckpt']:
         if args['ckpt']['save_dir'] is not None:
-            backbone_save_path = args['ckpt']['save_dir'] + args['logger']['name'] + '_backbone.pth'
+            backbone_save_path = args['ckpt']['save_dir'] + args['logger']['name'] + '.pth'
             torch.save(model.backbone.state_dict(), backbone_save_path)
-            selector_save_path = args['ckpt']['save_dir'] + args['logger']['name'] + '_selector.pth'
-            torch.save(model.selector.state_dict(), selector_save_path)
+            #selector_save_path = args['ckpt']['save_dir'] + args['logger']['name'] + '_selector.pth'
+            #torch.save(model.selector.state_dict(), selector_save_path)
 
     # Evaluation loop
     TIL = []

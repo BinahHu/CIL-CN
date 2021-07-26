@@ -1,5 +1,5 @@
 dataset:
-  type: tinyimg
+  type: cifar100
   root: /home/zhiyuan/CIL-CN/datasets/
   batch_size: 32
 model:
@@ -26,5 +26,5 @@ ckpt:
   save_dir: /home/zhiyuan/CIL-CN/saved_models/
 logger:
   root: /home/zhiyuan/CIL-CN/log/
-  name: covnorm_tinyimg
+  name: covnorm_cifar100_trial2
 params:
