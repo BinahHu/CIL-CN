@@ -1,0 +1,65 @@
+dataset: cifar100
+
+model: der
+convnet: multinet
+convnet_config:
+  sub_convnet: resnet18
+  sub_convnet_config:
+    last_relu: False
+    nf: 64
+
+fixed_memory: true
+memory_size: 2000
+
+eval_type: cnn
+
+classifier_config:
+  type: auxcls
+  normalize: False
+  use_bias: False
+  reuse_oldfc: False
+  aux_n+1: True
+
+task_max: 10
+
+distillation: "none"
+temperature: 1
+dynamic_weight_decay: False
+extract_no_act: False
+
+finetuning_config:
+  sampling: undersampling
+  tuning: classifier
+  lr: 0.05
+  epochs: 50
+  weight_decay: 0.0005
+  temperature: 5.0
+  scheduling:
+    - 15
+    - 30
+  lr_decay: 0.1
+  scaling: null
+
+# Scheduling
+scheduler: multistep
+scheduling:
+  - 100
+  - 120
+warmup:
+  total_epoch: 10
+  multiplier: 1
+
+# Misc
+epochs: 170
+lr: 0.1
+lr_decay: 0.1
+optimizer: sgd
+proxy_per_class: 1
+weight_decay: 0.0005
+
+weight_generation:
+  type: imprinted
+  multi_class_diff: kmeans
+
+dataset_transforms:
+  color_jitter: true
