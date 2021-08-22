@@ -1,9 +1,9 @@
 python -minclearn \
---data-path ../DER-ClassIL.pytorch/data/cifar100/ \
---options options/podnet/podnet_cnn_cifar100.yaml options/data/cifar100_1order.yaml\
+--data-path ../CIL-backbone/DER-ClassIL.pytorch/data/cifar100/ \
+--options options/der/der_cnn_cifar100_task.yaml options/data/cifar100_1order.yaml \
 --increment 10 \
---task-factor 1 \
---fixed-memory \
---device 7 \
---label podnet_cnn_cifar100_10steps_buffer1000 \
--save last
+--device 6 \
+--workers 0 \
+--label der_cifar100_10steps_task \
+-save last \
+-task
