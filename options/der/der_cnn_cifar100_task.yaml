@@ -8,6 +8,8 @@ convnet_config:
     last_relu: True
     nf: 64
 
+eval_every_x_epochs: 10
+
 fixed_memory: False
 memory_size: 2000
 
@@ -28,7 +30,7 @@ dynamic_weight_decay: False
 extract_no_act: False
 
 finetuning_config:
-  sampling: undersampling
+  sampling: decouple
   tuning: classifier
   lr: 0.05
   epochs: 50

@@ -709,6 +709,10 @@ class WithAuxClassifier(nn.Module):
 
         self.to(self.device)
 
+    def reset_parameters(self):
+        self.classifier.reset_parameters()
+        self.aux_classifier.reset_parameters()
+
     def _gen_classifier(self, in_features, n_classes):
         if self.normalize:
             classifier = SimpleCosineClassifier(in_features, n_classes).to(self.device)

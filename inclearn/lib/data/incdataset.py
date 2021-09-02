@@ -6,6 +6,7 @@ import torch
 from PIL import Image
 from torch.utils.data import DataLoader
 from torchvision import transforms
+from inclearn.lib.utils import construct_balanced_subset
 
 from .datasets import (
     APY, CUB200, LAD, AwA2, ImageNet100, ImageNet100UCIR, ImageNet1000, TinyImageNet200, iCIFAR10,
@@ -198,48 +199,107 @@ class IncrementalDataset:
         """
         if not isinstance(class_indexes, list):  # TODO: deprecated, should always give a list
             class_indexes = [class_indexes]
-
-        if data_source == "train":
+        shuffle = False
+        if data_source in ["train", "train_full"]:
             x, y = self.data_train, self.targets_train
-        elif data_source == "val":
+            shuffle = True
+        elif data_source in ["val", "val_full"]:
             x, y = self.data_val, self.targets_val
-        elif data_source == "test":
+            shuffle = True
+        elif data_source in ["test", "test_full"]:
             x, y = self.data_test, self.targets_test
         else:
             raise ValueError("Unknown data source <{}>.".format(data_source))
 
-        data, targets = [], []
-        for class_index in class_indexes:
-            class_data, class_targets = self._select(
-                x, y, low_range=class_index, high_range=class_index + 1
-            )
-            data.append(class_data)
-            targets.append(class_targets)
-
-        if len(data) == 0:
-            assert memory is not None
-        else:
-            data = np.concatenate(data)
-            targets = np.concatenate(targets)
-
-        if (not isinstance(memory, tuple) and
-            memory is not None) or (isinstance(memory, tuple) and memory[0] is not None):
-            if len(data) > 0:
-                data, targets, memory_flags = self._add_memory(data, targets, *memory)
-            else:
-                data, targets = memory
-                memory_flags = np.ones((data.shape[0],))
-        else:
+        if "_full" in data_source:
+            data = x
+            targets = y
             memory_flags = np.zeros((data.shape[0],))
+        else:
+            data, targets = [], []
+            for class_index in class_indexes:
+                class_data, class_targets = self._select(
+                    x, y, low_range=class_index, high_range=class_index + 1
+                )
+                data.append(class_data)
+                targets.append(class_targets)
+
+            if len(data) == 0:
+                assert memory is not None
+            else:
+                data = np.concatenate(data)
+                targets = np.concatenate(targets)
+
+            if (not isinstance(memory, tuple) and
+                memory is not None) or (isinstance(memory, tuple) and memory[0] is not None):
+                if len(data) > 0:
+                    data, targets, memory_flags = self._add_memory(data, targets, *memory)
+                else:
+                    data, targets = memory
+                    memory_flags = np.ones((data.shape[0],))
+            else:
+                memory_flags = np.zeros((data.shape[0],))
 
         return data, self._get_loader(
-            data, targets, memory_flags, shuffle=False, mode=mode, sampler=sampler
+            data, targets, memory_flags, shuffle=shuffle, mode=mode, sampler=sampler
         )
 
     def get_memory_loader(self, data, targets):
         return self._get_loader(
             data, targets, np.ones((data.shape[0],)), shuffle=True, mode="train"
         )
+
+    def get_balanced_memory_loader(self, data_memory, targets_memory, low_range, high_range, is_task=False):
+        data, targets = self._select(self.data_train, self.targets_train,
+                                     low_range=low_range,
+                                     high_range=high_range)
+
+        data = np.array(data)
+        targets = np.array(targets)
+        '''
+        if is_task:
+            shuffle_idx = list(range(data.shape[0]))
+            random.shuffle(shuffle_idx)
+            data = data[shuffle_idx]
+            targets = targets[shuffle_idx]
+
+            #Trick, map labels of the same task into one class
+            for i in range(targets_memory.shape[0]):
+                y_cls = targets[i]
+                y_task = self._find_task_idx(y_cls)
+                targets_memory[i] = sum(self.increments[:y_task])
+
+            for i in range(targets.shape[0]):
+                y_cls = targets[i]
+                y_task = self._find_task_idx(y_cls)
+                targets[i] = sum(self.increments[:y_task])
+
+            #FIXME: Here we assume number of samples in the dataset is always
+            # larger than the buffer, but this may not be true
+            #min_size = min(data.shaepe[0], data_memory.shape[0])
+            min_size = data_memory.shape[0]
+
+            data = data[:min_size]
+            targets = targets[:min_size]
+        '''
+
+        x = np.concatenate((data, data_memory))
+        y = np.concatenate((targets, targets_memory))
+
+        #if not is_task:
+        x, y = construct_balanced_subset(x, y)
+
+        return self._get_loader(
+            x, y, np.ones((x.shape[0],)), shuffle=True, mode="train"
+        )
+
+    def _find_task_idx(self, y_cls):
+        s = 0
+        for i in range(len(self.increments)):
+            if y_cls < s:
+                return i - 1
+            s += self.increments[i]
+        return len(self.increments) - 1
 
     def _select(self, x, y, low_range=0, high_range=0):
         idxes = np.where(np.logical_and(y >= low_range, y < high_range))[0]
@@ -428,7 +488,7 @@ class DummyDataset(torch.utils.data.Dataset):
         assert x.shape[0] == y.shape[0] == memory_flags.shape[0]
 
     def _get_y_task(self, one_hot, y, map_to_task):
-        y_task = np.zeros((y.shape[0],))
+        y_task = np.zeros((y.shape[0],), dtype=np.int64)
 
         if one_hot:
             y_class = np.where(self.y == 1)[1]

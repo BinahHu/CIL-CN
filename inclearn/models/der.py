@@ -3,6 +3,7 @@ import os
 import pickle
 import collections
 from tqdm import tqdm
+import copy
 
 import numpy as np
 import torch
@@ -34,7 +35,6 @@ class DER(ICarl):
         self.aux_nplus1 = args["classifier_config"].get("aux_nplus1", True)
         self._finetuning_config = args.get("finetuning_config")
         self.temperature = args.get("temperature", 1.0)
-
         self._increments = []
 
     def eval(self):
@@ -50,10 +50,20 @@ class DER(ICarl):
     def _before_task(self, train_loader, val_loader):
         self._n_classes += self._task_size
         self._increments.append(self._task_size)
-        self._network.add_classes(self._task_size)
+        if self._is_task_level:
+            self._network.add_classes(1)
+        else:
+            self._network.add_classes(self._task_size)
         logger.info("Now {} examplars per class.".format(self._memory_per_class))
 
         self.set_optimizer()
+
+    #@property
+    #def _memory_per_class(self):
+    #    """Returns the number of examplars per class."""
+    #    if self._fixed_memory:
+    #        return self._memory_size // (self._n_tasks if self._is_task_level else self._total_n_classes)
+    #    return self._memory_size // (self._n_current_task if self._is_task_level else self._n_classes)
 
     def set_optimizer(self, lr=None):
         if lr is None:
@@ -94,6 +104,8 @@ class DER(ICarl):
 
     def _train_task(self, train_loader, val_loader):
         logger.debug("nb {}.".format(len(train_loader.dataset)))
+        #if self._is_task_level and self._task == 0:
+        #logger.log("Task level model skip the first task")
         self._training_step(train_loader, val_loader, 0, self._n_epochs, temperature=self.temperature)
 
         self._post_processing_type = None
@@ -118,6 +130,12 @@ class DER(ICarl):
                     mode="train",
                     sampler=samplers.MemoryOverSampler
                 )
+            elif self._finetuning_config["sampling"] == "decouple":
+                data_memory, targets_memory = self.get_memory()
+                loader = self.inc_dataset.get_balanced_memory_loader(data_memory, targets_memory,
+                                                                     low_range=self._n_classes - self._task_size,
+                                                                     high_range=self._n_classes,
+                                                                     is_task=self._is_task_level)
 
             if self._finetuning_config["tuning"] == "all":
                 parameters = self._network.parameters()
@@ -143,9 +161,14 @@ class DER(ICarl):
             self._optimizer = factory.get_optimizer(
                 parameters, self._opt_name, self._finetuning_config["lr"], self._finetuning_config["weight_decay"]
             )
+            finetune_scheduling = []
+            for e in self._finetuning_config["scheduling"]:
+                finetune_scheduling.append(e + self._n_epochs)
             self._scheduler = torch.optim.lr_scheduler.MultiStepLR(self._optimizer,
-                                                                   self._finetuning_config["scheduling"],
+                                                                   finetune_scheduling,
                                                                    gamma=self._finetuning_config["lr_decay"])
+
+            self._network.classifier.classifier.reset_parameters()
             self._training_step(
                 loader,
                 val_loader,
@@ -192,6 +215,10 @@ class DER(ICarl):
                 training_network.convnet.clear_records()
                 training_network.convnet.record_mode()
 
+            if epoch == self._warmup_config["total_epoch"]:
+                training_network.classifier.classifier.reset_parameters()
+                training_network.classifier.aux_classifier.reset_parameters()
+
             prog_bar = tqdm(
                 train_loader,
                 disable=self._disable_progressbar,
@@ -200,7 +227,8 @@ class DER(ICarl):
             )
             for i, input_dict in enumerate(prog_bar, start=1):
                 self.train()
-                inputs, targets = input_dict["inputs"], input_dict["targets"]
+                inputs = input_dict["inputs"]
+                targets = input_dict["targets_task"] if self._is_task_level else input_dict["targets"]
                 memory_flags = input_dict["memory_flags"]
 
                 if grad is not None:
@@ -217,11 +245,12 @@ class DER(ICarl):
                     memory_flags,
                     old_classes=old_classes,
                     new_classes=new_classes,
-                    temperature=temperature
+                    temperature=temperature,
+                    example=(i == len(prog_bar) - 1)
                 )
 
-                if epoch > self._n_epochs:
-                    #Fine tuning
+                if epoch >= self._n_epochs or self._task == 0:
+                    #Fine tuning or the first task
                     loss = loss_ce
                 else:
                     loss = loss_ce + loss_aux
@@ -243,7 +272,8 @@ class DER(ICarl):
                 self._data_memory, self._targets_memory, self._herding_indexes, self._class_means = self.build_examplars(
                     self.inc_dataset, self._herding_indexes
                 )
-                ytrue, ypred = self._eval_task(val_loader)
+                ypred, ytrue = self._eval_task(val_loader)
+                ypred = ypred.argmax(axis=-1)
                 acc = 100 * round((ypred == ytrue).sum() / len(ytrue), 3)
                 logger.info("Val accuracy: {}".format(acc))
                 self._network.train()
@@ -274,7 +304,7 @@ class DER(ICarl):
         inputs,
         targets,
         memory_flags,
-        old_classes=None, new_classes=None, accu=None, new_accu=None, old_accu=None, temperature=1.0):
+        old_classes=None, new_classes=None, accu=None, new_accu=None, old_accu=None, temperature=1.0, example=False):
         inputs, targets = inputs.to(self._device, non_blocking=True), targets.to(self._device, non_blocking=True)
 
         outputs = training_network(inputs)
@@ -285,22 +315,134 @@ class DER(ICarl):
         #     new_accu.add(logits[new_classes].detach(), targets[new_classes].cpu().numpy())
         # if old_accu is not None:
         #     old_accu.add(logits[old_classes].detach(), targets[old_classes].cpu().numpy())
-        return self._compute_loss(inputs, targets, outputs, old_classes, new_classes, temperature=temperature)
+        loss, aux_loss = self._compute_loss(inputs, targets, outputs, old_classes, new_classes, temperature=temperature)
 
-    def _compute_loss(self, inputs, targets, outputs, old_classes, new_classes, temperature=1):
+        if not utils.check_loss(loss):
+            raise ValueError("A loss is NaN: {}".format(self._metrics))
+
+        if not utils.check_loss(aux_loss):
+            raise ValueError("A aux_loss is NaN: {}".format(self._metrics))
+
+        self._metrics["loss"] += loss.item()
+        self._metrics["aux_loss"] += aux_loss.item()
+
+        pred = outputs["logit"].argmax(dim=-1)
+        acc = (pred == targets).sum()
+        acc = acc / targets.shape[0] * 100
+        self._metrics["acc"] += acc.item()
+
+        if example and False:
+            print()
+            print("{} pred".format(pred.tolist()[:60]))
+            print("{} targets".format(targets.tolist()[:60]))
+
+        return loss, aux_loss
+
+    def _compute_loss(self, inputs, targets, outputs, old_classes, new_classes, temperature=1.0):
         loss = F.cross_entropy(outputs['logit'] / temperature, targets)
 
         if outputs['aux_logit'] is not None:
             aux_targets = targets.clone()
             if self.aux_nplus1:
                 aux_targets[old_classes] = 0
-                aux_targets[new_classes] -= sum(self.inc_dataset.increments[:self._task]) - 1
+                delta = self._task if self._is_task_level else sum(self.inc_dataset.increments[:self._task])
+                aux_targets[new_classes] -= delta - 1
             aux_loss = F.cross_entropy(outputs['aux_logit'], aux_targets)
         else:
             aux_loss = torch.zeros([1]).to(self._device)
 
         return loss, aux_loss
 
+    def _eval_task(self, data_loader):
+        ypreds, ytrue = self._compute_accuracy_by_netout(data_loader)
+
+        return ypreds, ytrue
+
+    def _compute_accuracy_by_netout(self, data_loader):
+        preds, targets = [], []
+        self._network.eval()
+        with torch.no_grad():
+            for input_dict in data_loader:
+                inputs = input_dict["inputs"]
+                lbls = input_dict["targets_task"] if self._is_task_level else input_dict["targets"]
+                inputs = inputs.to(self._device, non_blocking=True)
+                _preds = self._network(inputs)['logit']
+                preds.append(_preds.detach().cpu().numpy())
+                targets.append(lbls.long().cpu().numpy())
+        preds = np.concatenate(preds, axis=0)
+        targets = np.concatenate(targets, axis=0)
+        return preds, targets
+
+
+    def build_examplars(
+        self, inc_dataset, herding_indexes, memory_per_class=None, data_source="train"
+    ):
+        logger.info("Building & updating memory.")
+        memory_per_class = memory_per_class or self._memory_per_class
+        herding_indexes = copy.deepcopy(herding_indexes)
+
+        data_memory, targets_memory = [], []
+        class_means = np.zeros((self._n_classes, self._network.features_dim))
+
+        for class_idx in range(self._n_classes):
+            # We extract the features, both normal and flipped:
+            inputs, loader = inc_dataset.get_custom_loader(
+                class_idx, mode="test", data_source=data_source
+            )
+            features, targets = utils.extract_features(self._network, loader)
+
+            if class_idx >= self._n_classes - self._task_size:
+                # New class, selecting the examplars:
+                if self._herding_selection["type"] == "icarl":
+                    selected_indexes = herding.icarl_selection(features, memory_per_class)
+                elif self._herding_selection["type"] == "closest":
+                    selected_indexes = herding.closest_to_mean(features, memory_per_class)
+                elif self._herding_selection["type"] == "random":
+                    selected_indexes = herding.random(features, memory_per_class)
+                elif self._herding_selection["type"] == "first":
+                    selected_indexes = np.arange(memory_per_class)
+                elif self._herding_selection["type"] == "kmeans":
+                    selected_indexes = herding.kmeans(
+                        features, memory_per_class, k=self._herding_selection["k"]
+                    )
+                elif self._herding_selection["type"] == "confusion":
+                    selected_indexes = herding.confusion(
+                        *self._last_results,
+                        memory_per_class,
+                        class_id=class_idx,
+                        minimize_confusion=self._herding_selection["minimize_confusion"]
+                    )
+                elif self._herding_selection["type"] == "var_ratio":
+                    selected_indexes = herding.var_ratio(
+                        memory_per_class, self._network, loader, **self._herding_selection
+                    )
+                elif self._herding_selection["type"] == "mcbn":
+                    selected_indexes = herding.mcbn(
+                        memory_per_class, self._network, loader, **self._herding_selection
+                    )
+                else:
+                    raise ValueError(
+                        "Unknown herding selection {}.".format(self._herding_selection)
+                    )
+
+                herding_indexes.append(selected_indexes)
+
+            # Reducing examplars:
+            try:
+                selected_indexes = herding_indexes[class_idx][:memory_per_class]
+                herding_indexes[class_idx] = selected_indexes
+            except:
+                import pdb
+                pdb.set_trace()
+
+            data_memory.append(inputs[selected_indexes])
+            targets_memory.append(targets[selected_indexes])
+
+
+        data_memory = np.concatenate(data_memory)
+        targets_memory = np.concatenate(targets_memory)
+
+        return data_memory, targets_memory, herding_indexes, class_means
 
 
 def _clean_list(l):

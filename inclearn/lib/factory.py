@@ -66,6 +66,7 @@ def get_model(args):
         "e2e": models.End2End,
         "fixed": None,
         "oracle": None,
+        "joint": models.Joint,
         "bic": models.BiC,
         "ucir": models.UCIR,
         "podnet": models.PODNet,

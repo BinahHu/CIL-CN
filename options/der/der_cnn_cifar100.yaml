@@ -22,13 +22,16 @@ classifier_config:
 
 task_max: 10
 
+validation: 0.1
+eval_every_x_epochs: 10
+
 distillation: "none"
 temperature: 1
 dynamic_weight_decay: False
 extract_no_act: False
 
 finetuning_config:
-  sampling: undersampling
+  sampling: decouple
   tuning: classifier
   lr: 0.05
   epochs: 50

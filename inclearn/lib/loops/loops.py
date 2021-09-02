@@ -25,7 +25,8 @@ def single_loop(
     disable_progressbar=False,
     eval_every_x_epochs=None,
     config=None,
-    early_stopping=None
+    early_stopping=None,
+    is_task=False
 ):
     best_epoch, best_acc = -1, -1.
     wait = 0
@@ -52,7 +53,8 @@ def single_loop(
             bar_format="{desc}: {percentage:3.0f}% | {n_fmt}/{total_fmt} | {rate_fmt}{postfix}"
         )
         for batch_index, input_dict in enumerate(prog_bar, start=1):
-            inputs, targets = input_dict["inputs"], input_dict["targets"]
+            inputs = input_dict["inputs"]
+            targets = input_dict["targets_task"] if is_task else input_dict["targets"]
             memory_flags = input_dict["memory_flags"]
 
             if grad is not None:
@@ -66,6 +68,7 @@ def single_loop(
                 targets,
                 memory_flags,
                 metrics,
+                batch_index == len(prog_bar) - 1,
                 epoch=epoch,
                 epochs=n_epochs,
                 gradcam_grad=grad,
