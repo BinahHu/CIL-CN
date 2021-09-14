@@ -22,6 +22,7 @@ classifier_config:
   use_bias: False
   reuse_oldfc: False
   aux_n+1: True
+  with_class: True
 
 task_max: 10
 

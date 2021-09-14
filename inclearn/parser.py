@@ -51,6 +51,7 @@ def get_parser():
     parser.add_argument("--data-path", default="/data/douillard/", type=str)
     parser.add_argument("-task", "--task", action="store_true",
                         help="Train the model in task level.")
+    parser.add_argument("-merge", "--merge", action="store_true", default=False)
 
     # Training related:
     parser.add_argument("-lr", "--lr", default=2., type=float,

@@ -37,6 +37,8 @@ class DER(ICarl):
         self.temperature = args.get("temperature", 1.0)
         self.aux_weight = args["classifier_config"].get("aux_weight", 1.0)
         self._increments = []
+        self.merge = args.get("merge", False)
+        self.with_class = args["classifier_config"].get("with_class", False)
 
     def eval(self):
         self._network.eval()
@@ -52,7 +54,10 @@ class DER(ICarl):
         self._n_classes += self._task_size
         self._increments.append(self._task_size)
         if self._is_task_level:
-            self._network.add_classes(1)
+            if self.with_class:
+                self._network.add_classes(self._task_increment, with_class_classes=self._task_size)
+            else:
+                self._network.add_classes(self._task_increment)
         else:
             self._network.add_classes(self._task_size)
         logger.info("Now {} examplars per class.".format(self._memory_per_class))
@@ -111,7 +116,7 @@ class DER(ICarl):
 
         self._post_processing_type = None
 
-        if self._finetuning_config and self._task != 0:
+        if self._finetuning_config and self._task > (1 if self.merge else 0):
             logger.info("Fine-tuning")
             if self._finetuning_config["scaling"]:
                 logger.info(
@@ -230,6 +235,7 @@ class DER(ICarl):
                 self.train()
                 inputs = input_dict["inputs"]
                 targets = input_dict["targets_task"] if self._is_task_level else input_dict["targets"]
+                targets_class = input_dict["targets"] if self.with_class else None
                 memory_flags = input_dict["memory_flags"]
 
                 if grad is not None:
@@ -239,11 +245,12 @@ class DER(ICarl):
                 self._optimizer.zero_grad()
                 old_classes = targets < (self._n_classes - self._task_size)
                 new_classes = targets >= (self._n_classes - self._task_size)
-                loss_ce, loss_aux = self._forward_loss(
+                loss_ce, loss_aux, loss_class = self._forward_loss(
                     training_network,
                     inputs,
                     targets,
                     memory_flags,
+                    targets_class=targets_class,
                     old_classes=old_classes,
                     new_classes=new_classes,
                     temperature=temperature,
@@ -254,8 +261,12 @@ class DER(ICarl):
                     #Fine tuning or the first task
                     loss = loss_ce
                 else:
-                    #loss = loss_ce + self.aux_weight * loss_aux
-                    loss = loss_ce
+                    if self.aux_weight == 0 or self._is_task_level:
+                        loss = loss_ce
+                    else:
+                        loss = loss_ce + self.aux_weight * loss_aux
+                if self.with_class:
+                    loss += loss_class
 
                 if not utils.check_loss(loss):
                     import pdb
@@ -306,8 +317,11 @@ class DER(ICarl):
         inputs,
         targets,
         memory_flags,
+        targets_class=None,
         old_classes=None, new_classes=None, accu=None, new_accu=None, old_accu=None, temperature=1.0, example=False):
         inputs, targets = inputs.to(self._device, non_blocking=True), targets.to(self._device, non_blocking=True)
+        if self.with_class:
+            targets_class = targets_class.to(self._device, non_blocking=True)
 
         outputs = training_network(inputs)
         if accu is not None:
@@ -317,7 +331,7 @@ class DER(ICarl):
         #     new_accu.add(logits[new_classes].detach(), targets[new_classes].cpu().numpy())
         # if old_accu is not None:
         #     old_accu.add(logits[old_classes].detach(), targets[old_classes].cpu().numpy())
-        loss, aux_loss = self._compute_loss(inputs, targets, outputs, old_classes, new_classes, temperature=temperature)
+        loss, aux_loss, loss_class = self._compute_loss(inputs, targets, outputs, old_classes, new_classes, targets_class=targets_class, temperature=temperature)
 
         if not utils.check_loss(loss):
             raise ValueError("A loss is NaN: {}".format(self._metrics))
@@ -327,20 +341,27 @@ class DER(ICarl):
 
         self._metrics["loss"] += loss.item()
         self._metrics["aux_loss"] += -1 if self.aux_weight == 0 else aux_loss.item()
+        self._metrics["loss_class"] += loss_class.item() if self.with_class else -1
 
         pred = outputs["logit"].argmax(dim=-1)
         acc = (pred == targets).sum()
         acc = acc / targets.shape[0] * 100
         self._metrics["acc"] += acc.item()
 
+        if self.with_class:
+            pred = outputs['logit_class'].argmax(dim=-1)
+            acc = (pred == targets_class).sum()
+            acc = acc / targets_class.shape[0] * 100
+            self._metrics["acc_class"] += acc.item()
+
         if example and False:
             print()
             print("{} pred".format(pred.tolist()[:60]))
             print("{} targets".format(targets.tolist()[:60]))
 
-        return loss, aux_loss
+        return loss, aux_loss, loss_class
 
-    def _compute_loss(self, inputs, targets, outputs, old_classes, new_classes, temperature=1.0):
+    def _compute_loss(self, inputs, targets, outputs, old_classes, new_classes, targets_class=None, temperature=1.0):
         loss = F.cross_entropy(outputs['logit'] / temperature, targets)
 
         if outputs['aux_logit'] is not None:
@@ -353,7 +374,9 @@ class DER(ICarl):
         else:
             aux_loss = torch.zeros([1]).to(self._device)
 
-        return loss, aux_loss
+        loss_class = F.cross_entropy(outputs['logit_class'] / temperature, targets_class) if self.with_class else None
+
+        return loss, aux_loss, loss_class
 
     def _eval_task(self, data_loader):
         ypreds, ytrue = self._compute_accuracy_by_netout(data_loader)

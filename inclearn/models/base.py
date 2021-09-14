@@ -32,6 +32,7 @@ class IncrementalLearner(abc.ABC):
         self._n_test_data = task_info["n_test_data"]
         self._n_tasks = task_info["max_task"]
         self._is_task_level = task_info["is_task_dataset"]
+        self._task_increment = task_info["task_increment"]
 
     def before_task(self, train_loader, val_loader):
         LOGGER.info("Before task")

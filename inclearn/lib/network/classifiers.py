@@ -663,6 +663,7 @@ class WithAuxClassifier(nn.Module):
         init="kaiming",
         reuse_oldfc=False,
         aux_nplus1=True,
+        with_class=False,
         **kwargs):
         super(WithAuxClassifier, self).__init__()
 
@@ -670,8 +671,10 @@ class WithAuxClassifier(nn.Module):
 
         self.classifier = None
         self.aux_classifier = None
+        self.with_class_fc = None
         self.ntask = 0
         self.n_classes = 0
+        self.n_with_class_classes=0
 
         self.use_bias = use_bias
         self.normalize = normalize
@@ -679,15 +682,17 @@ class WithAuxClassifier(nn.Module):
 
         self.reuse_oldfc = reuse_oldfc
         self.aux_nplus1 = aux_nplus1
+        self.with_class = with_class
         self.device = device
 
     def forward(self, features):
         logits = self.classifier(features)
         aux_logits = self.aux_classifier(features[:, -self.features_dim:]) if features.shape[1] > self.features_dim else None
+        logit_class = self.with_class_fc(features) if self.with_class else None
 
-        return {'logit': logits, 'aux_logit': aux_logits}
+        return {'logit': logits, 'aux_logit': aux_logits, 'logit_class': logit_class}
 
-    def add_classes(self, n_classes):
+    def add_classes(self, n_classes, with_class_classes=None):
         self.ntask += 1
 
         fc = self._gen_classifier(self.features_dim * self.ntask, self.n_classes + n_classes)
@@ -705,6 +710,12 @@ class WithAuxClassifier(nn.Module):
         del self.aux_classifier
         self.aux_classifier = aux_fc
 
+        if self.with_class:
+            with_class_fc = self._gen_classifier(self.features_dim * self.ntask, self.n_with_class_classes + with_class_classes)
+            del self.with_class_fc
+            self.with_class_fc = with_class_fc
+            self.n_with_class_classes += with_class_classes
+
         self.n_classes += n_classes
 
         self.to(self.device)
@@ -712,6 +723,8 @@ class WithAuxClassifier(nn.Module):
     def reset_parameters(self):
         self.classifier.reset_parameters()
         self.aux_classifier.reset_parameters()
+        if self.with_class:
+            self.with_class_fc.reset_parameters()
 
     def _gen_classifier(self, in_features, n_classes):
         if self.normalize:

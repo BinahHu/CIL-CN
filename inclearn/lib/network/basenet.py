@@ -166,8 +166,8 @@ class BasicNet(nn.Module):
     def features_dim(self):
         return self.convnet.out_dim
 
-    def add_classes(self, n_classes):
-        self.classifier.add_classes(n_classes)
+    def add_classes(self, n_classes, with_class_classes=None):
+        self.classifier.add_classes(n_classes, with_class_classes=with_class_classes)
         if hasattr(self.convnet, "add_classes"):
             self.convnet.add_classes(n_classes)
 

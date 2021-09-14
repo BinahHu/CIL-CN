@@ -5,6 +5,6 @@ python -minclearn \
 --increment 10 \
 --device 0 \
 --label eval \
--resume /home/zhiyuan/CIL-CN/results/dev/der/202109/week_1/20210906_der_cifar100_cluster_10steps_task/net_0_task_9.pth \
+-resume /home/zhiyuan/CIL-CN/results/dev/der/202109/week_2/20210913_der_cifar100_cluster_10steps_task_woaux/net_0_task_9.pth \
 --logits-save-dir /home/zhiyuan/CIL-backbone/features/der_task_cluster1 \
 -task

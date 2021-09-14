@@ -97,7 +97,9 @@ def _train(args, start_date, class_order, run_id):
     )
 
     for task_id in range(inc_dataset.n_tasks):
-        task_info, train_loader, val_loader, test_loader = inc_dataset.new_task(memory, memory_val)
+        if args["merge"] and task_id == 0:
+            continue
+        task_info, train_loader, val_loader, test_loader = inc_dataset.new_task(memory, memory_val, merge_first=((task_id == 1) and args["merge"]))
         if task_info["task"] == args["max_task"]:
             break
 
@@ -169,7 +171,7 @@ def _train(args, start_date, class_order, run_id):
         logger.info("Current acc top5: {}.".format(metric_logger.last_results["accuracy_top5"]))
         logger.info("Forgetting: {}.".format(metric_logger.last_results["forgetting"]))
         logger.info("Cord metric: {:.2f}.".format(metric_logger.last_results["cord"]))
-        if task_id > 0:
+        if (task_id > (1 if args["merge"] else 0)):
             logger.info(
                 "Old accuracy: {:.2f}, mean: {:.2f}.".format(
                     metric_logger.last_results["old_accuracy"],

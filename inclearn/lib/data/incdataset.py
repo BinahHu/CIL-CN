@@ -102,12 +102,17 @@ class IncrementalDataset:
     def n_classes(self):
         return sum(self.increments)
 
-    def new_task(self, memory=None, memory_val=None):
-        if self._current_task >= len(self.increments):
-            raise Exception("No more tasks.")
+    def new_task(self, memory=None, memory_val=None, merge_first=False):
+        if merge_first:
+            self._current_task = 1
+            min_class = sum(self.increments[:self._current_task-1])
+            max_class = sum(self.increments[:self._current_task + 1])
+        else:
+            if self._current_task >= len(self.increments):
+                raise Exception("No more tasks.")
 
-        min_class = sum(self.increments[:self._current_task])
-        max_class = sum(self.increments[:self._current_task + 1])
+            min_class = sum(self.increments[:self._current_task])
+            max_class = sum(self.increments[:self._current_task + 1])
 
         x_train, y_train = self._select(
             self.data_train, self.targets_train, low_range=min_class, high_range=max_class
@@ -163,7 +168,8 @@ class IncrementalDataset:
             "max_task": len(self.increments),
             "n_train_data": x_train.shape[0],
             "n_test_data": x_test.shape[0],
-            "is_task_dataset": self.is_task_dataset
+            "is_task_dataset": self.is_task_dataset,
+            "task_increment": 2 if merge_first else 1
         }
 
         self._current_task += 1
