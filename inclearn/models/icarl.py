@@ -130,7 +130,7 @@ class ICarl(IncrementalLearner):
         path = os.path.join(directory, f"meta_{run_id}_task_{self._task}.pkl")
 
         logger.info("Saving metadata at {}.".format(path))
-        with open(path, "wb+") as f:
+        with open(path, "wb") as f:
             pickle.dump(
                 [self._data_memory, self._targets_memory, self._herding_indexes, self._class_means],
                 f
@@ -157,7 +157,10 @@ class ICarl(IncrementalLearner):
 
     def _before_task(self, train_loader, val_loader):
         self._n_classes += self._task_size
-        self._network.add_classes(self._task_size)
+        if self._is_task_level:
+            self._network.add_classes(1)
+        else:
+            self._network.add_classes(self._task_size)
         logger.info("Now {} examplars per class.".format(self._memory_per_class))
 
         self._optimizer = factory.get_optimizer(
@@ -220,7 +223,8 @@ class ICarl(IncrementalLearner):
                 bar_format="{desc}: {percentage:3.0f}% | {n_fmt}/{total_fmt} | {rate_fmt}{postfix}"
             )
             for i, input_dict in enumerate(prog_bar, start=1):
-                inputs, targets = input_dict["inputs"], input_dict["targets"]
+                inputs = input_dict["inputs"]
+                targets = input_dict["targets_task"] if self._is_task_level else input_dict["targets"]
                 memory_flags = input_dict["memory_flags"]
 
                 if grad is not None:
@@ -252,7 +256,8 @@ class ICarl(IncrementalLearner):
                 self._data_memory, self._targets_memory, self._herding_indexes, self._class_means = self.build_examplars(
                     self.inc_dataset, self._herding_indexes
                 )
-                ytrue, ypred = self._eval_task(val_loader)
+                ypred, ytrue = self._eval_task(val_loader)
+                ypred = ypred.argmax(axis=-1)
                 acc = 100 * round((ypred == ytrue).sum() / len(ytrue), 3)
                 logger.info("Val accuracy: {}".format(acc))
                 self._network.train()
@@ -297,7 +302,7 @@ class ICarl(IncrementalLearner):
         **kwargs
     ):
         inputs, targets = inputs.to(self._device), targets.to(self._device)
-        onehot_targets = utils.to_onehot(targets, self._n_classes).to(self._device)
+        onehot_targets = utils.to_onehot(targets, self._task+1 if self._is_task_level else self._n_classes).to(self._device)
 
         outputs = training_network(inputs)
         if gradcam_act is not None:
@@ -310,6 +315,10 @@ class ICarl(IncrementalLearner):
             raise ValueError("A loss is NaN: {}".format(self._metrics))
 
         self._metrics["loss"] += loss.item()
+        pred = outputs["logits"].argmax(dim=-1)
+        acc = (pred == targets).sum()
+        acc = acc / targets.shape[0] * 100
+        self._metrics["acc"] += acc.item()
 
         return loss
 
@@ -346,7 +355,9 @@ class ICarl(IncrementalLearner):
             )
 
     def _eval_task(self, data_loader):
-        ypreds, ytrue = self.compute_accuracy(self._network, data_loader, self._class_means)
+        #ypreds, ytrue = self.compute_accuracy(self._network, data_loader, self._class_means)
+        ypreds, ytrue = self._compute_accuracy_by_netout(data_loader)
+
 
         return ypreds, ytrue
 
@@ -364,7 +375,8 @@ class ICarl(IncrementalLearner):
                 old_targets = torch.sigmoid(self._old_model(inputs)["logits"])
 
             new_targets = onehot_targets.clone()
-            new_targets[..., :-self._task_size] = old_targets
+            r = 1 if self._is_task_level else self._task_size
+            new_targets[..., :-r] = old_targets
 
             loss = F.binary_cross_entropy_with_logits(logits, new_targets)
 
@@ -486,6 +498,21 @@ class ICarl(IncrementalLearner):
         mean /= (np.linalg.norm(mean) + EPSILON)
 
         return mean
+
+    def _compute_accuracy_by_netout(self, data_loader):
+        preds, targets = [], []
+        self._network.eval()
+        with torch.no_grad():
+            for input_dict in data_loader:
+                inputs = input_dict["inputs"]
+                lbls = input_dict["targets_task"] if self._is_task_level else input_dict["targets"]
+                inputs = inputs.to(self._device, non_blocking=True)
+                _preds = self._network(inputs)['logits']
+                preds.append(_preds.detach().cpu().numpy())
+                targets.append(lbls.long().cpu().numpy())
+        preds = np.concatenate(preds, axis=0)
+        targets = np.concatenate(targets, axis=0)
+        return preds, targets
 
     @staticmethod
     def compute_accuracy(model, loader, class_means):

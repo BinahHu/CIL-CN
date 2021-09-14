@@ -35,6 +35,7 @@ class DER(ICarl):
         self.aux_nplus1 = args["classifier_config"].get("aux_nplus1", True)
         self._finetuning_config = args.get("finetuning_config")
         self.temperature = args.get("temperature", 1.0)
+        self.aux_weight = args["classifier_config"].get("aux_weight", 1.0)
         self._increments = []
 
     def eval(self):
@@ -253,7 +254,8 @@ class DER(ICarl):
                     #Fine tuning or the first task
                     loss = loss_ce
                 else:
-                    loss = loss_ce + loss_aux
+                    #loss = loss_ce + self.aux_weight * loss_aux
+                    loss = loss_ce
 
                 if not utils.check_loss(loss):
                     import pdb
@@ -269,9 +271,9 @@ class DER(ICarl):
 
             if self._eval_every_x_epochs and epoch != 0 and epoch % self._eval_every_x_epochs == 0:
                 self._network.eval()
-                self._data_memory, self._targets_memory, self._herding_indexes, self._class_means = self.build_examplars(
-                    self.inc_dataset, self._herding_indexes
-                )
+                #self._data_memory, self._targets_memory, self._herding_indexes, self._class_means = self.build_examplars(
+                #    self.inc_dataset, self._herding_indexes
+                #)
                 ypred, ytrue = self._eval_task(val_loader)
                 ypred = ypred.argmax(axis=-1)
                 acc = 100 * round((ypred == ytrue).sum() / len(ytrue), 3)
@@ -324,7 +326,7 @@ class DER(ICarl):
             raise ValueError("A aux_loss is NaN: {}".format(self._metrics))
 
         self._metrics["loss"] += loss.item()
-        self._metrics["aux_loss"] += aux_loss.item()
+        self._metrics["aux_loss"] += -1 if self.aux_weight == 0 else aux_loss.item()
 
         pred = outputs["logit"].argmax(dim=-1)
         acc = (pred == targets).sum()

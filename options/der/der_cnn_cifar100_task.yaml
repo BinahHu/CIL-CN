@@ -17,6 +17,7 @@ eval_type: cnn
 
 classifier_config:
   type: auxcls
+  aux_weight: 0.0
   normalize: False
   use_bias: False
   reuse_oldfc: False

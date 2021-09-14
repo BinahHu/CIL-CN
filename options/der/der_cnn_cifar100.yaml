@@ -22,7 +22,6 @@ classifier_config:
 
 task_max: 10
 
-validation: 0.1
 eval_every_x_epochs: 10
 
 distillation: "none"

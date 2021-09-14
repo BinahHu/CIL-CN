@@ -7,11 +7,8 @@ convnet: resnet18
 convnet_config:
   nf: 64
 
-lr: 0.3
+lr: 0.1
 weight_decay: 0
-scheduling:
-  - 150
-  - 300
 lr_decay: 0.1
 optimizer: sgd
-epochs: 400
+epochs: 200
