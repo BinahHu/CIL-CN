@@ -57,7 +57,11 @@ class DER(ICarl):
             if self.with_class:
                 self._network.add_classes(self._task_increment, with_class_classes=self._task_size)
             else:
-                self._network.add_classes(self._task_increment)
+                if self.merge and self._task == 1:
+                    self._network.add_classes(1)
+                    self._network.add_classes(1)
+                else:
+                    self._network.add_classes(self._task_increment)
         else:
             self._network.add_classes(self._task_size)
         logger.info("Now {} examplars per class.".format(self._memory_per_class))
@@ -83,10 +87,22 @@ class DER(ICarl):
         logger.info("Step {} weight decay {:.5f}".format(self._task, weight_decay))
         self.weight_decay = weight_decay
 
-        if self._task > 0:
-            for i in range(self._task):
-                for p in self.network.convnet.convnets[i].parameters():
-                    p.requires_grad = False
+        if self.merge:
+            if self._task > 1:
+                for i in range(self._task):
+                    for p in self.network.convnet.convnets[i].parameters():
+                        p.requires_grad = False
+        else:
+            if self._task > 0:
+                for i in range(self._task):
+                    for p in self.network.convnet.convnets[i].parameters():
+                        p.requires_grad = False
+
+        #for name, p in self._network.named_parameters():
+        #    if p.requires_grad:
+        #        print(name)
+        #print(self._network)
+        #c = input()
 
         self._optimizer = factory.get_optimizer(filter(lambda p: p.requires_grad, self._network.parameters()),
                                                 self._opt_name, lr, weight_decay)
@@ -245,6 +261,8 @@ class DER(ICarl):
                 self._optimizer.zero_grad()
                 old_classes = targets < (self._n_classes - self._task_size)
                 new_classes = targets >= (self._n_classes - self._task_size)
+                #print("old classes : {}".format(old_classes))
+                #print("new classes : {}".format(new_classes))
                 loss_ce, loss_aux, loss_class = self._forward_loss(
                     training_network,
                     inputs,
@@ -256,6 +274,7 @@ class DER(ICarl):
                     temperature=temperature,
                     example=(i == len(prog_bar) - 1)
                 )
+                #print("ce loss : {}, aux loss : {}, class loss : {}".format(loss_ce, loss_aux, loss_class))
 
                 if epoch >= self._n_epochs or self._task == 0:
                     #Fine tuning or the first task
@@ -271,6 +290,12 @@ class DER(ICarl):
                 if not utils.check_loss(loss):
                     import pdb
                     pdb.set_trace()
+
+                #print("loss {}".format(loss))
+                #print("lr {}".format(self._scheduler.get_lr()))
+                #print(self._network.convnet.convnets[0].conv1.weight)
+                #print(self._network.classifier.classifier.weight)
+                #c = input()
 
                 loss.backward()
                 self._optimizer.step()
@@ -347,6 +372,9 @@ class DER(ICarl):
         acc = (pred == targets).sum()
         acc = acc / targets.shape[0] * 100
         self._metrics["acc"] += acc.item()
+        #print(outputs['logit'])
+        #print(pred)
+        #print(targets)
 
         if self.with_class:
             pred = outputs['logit_class'].argmax(dim=-1)

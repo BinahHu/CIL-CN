@@ -4,6 +4,6 @@ python -minclearn \
 --increment 10 \
 --device 5 \
 --workers 0 \
---label der_cifar100_10steps_task_withclass_woaux \
+--label der_cifar100_10steps_task_woaux_coscls \
 -save last \
 -task

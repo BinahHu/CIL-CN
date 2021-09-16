@@ -247,7 +247,8 @@ def _after_task(config, model, inc_dataset, run_id, task_id, results_folder):
        and ((config["resume_first"] and task_id == 0) or not config["resume_first"]):
         model.load_metadata(config["resume"], run_id)
     else:
-        model.after_task_intensive(inc_dataset)
+        if config["mode"] != "eval":
+            model.after_task_intensive(inc_dataset)
 
     model.after_task(inc_dataset)
 
