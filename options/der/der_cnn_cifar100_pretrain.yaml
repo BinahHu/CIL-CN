@@ -3,7 +3,7 @@ dataset: cifar100
 model: der
 convnet: multinet
 convnet_config:
-  #pretrained_model: /home/zhiyuan/CIL-CN/saved_models/der_imagenet.pth
+  pretrained_model: /home/zhiyuan/CIL-CN/saved_models/der_imagenet_official.pth
   #prefix: "convnet.convnets.0."
   #prefix: "convnet."
   sub_convnet: resnet18
@@ -21,7 +21,7 @@ eval_type: cnn
 
 classifier_config:
   type: auxcls
-  normalize: True
+  normalize: False
   use_bias: False
   reuse_oldfc: False
   aux_n+1: True
