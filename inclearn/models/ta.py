@@ -20,14 +20,9 @@ EPSILON = 1e-8
 logger = logging.getLogger(__name__)
 
 
-class TA(ICarl):
-    """Implements DER.
-
-    * https://arxiv.org/abs/1905.13260
-    """
-
+class TACIL(ICarl):
     def __init__(self, args):
-        logger.info("Initializing DER")
+        logger.info("Initializing TACIL")
         args["convnet_config"]["device"] = args["device"][0]
         super().__init__(args)
         self.dynamic_wd = args.get("dynamic_weight_decay", False)
@@ -458,79 +453,6 @@ class TA(ICarl):
         preds = np.concatenate(preds, axis=0)
         targets = np.concatenate(targets, axis=0)
         return preds, targets
-
-    def build_examplars_task(self, inc_dataset, herding_indexes, memory_per_class=None, data_source="train"):
-        logger.info("Building & updating memory in task level.")
-        memory_per_class = memory_per_class or self._memory_per_class
-        memory_per_task = memory_per_class * self._task_size
-        herding_indexes = copy.deepcopy(herding_indexes)
-        class_means = np.zeros((self._n_classes, self._network.features_dim))
-        data_memory, targets_memory = [], []
-
-        for task_idx in range(self._task + 1):
-            class_idx = list(range(task_idx * self._task_size, (task_idx + 1) * self._task_size))
-            inputs, loader = inc_dataset.get_custom_loader(
-                class_idx, mode="test", data_source=data_source
-            )
-            if task_idx == self._task:
-                features, targets = utils.extract_features(self._network, loader)
-                if self._herding_selection["type"] == "icarl":
-                    selected_indexes = herding.icarl_selection(features, memory_per_task)
-                elif self._herding_selection["type"] == "closest":
-                    selected_indexes = herding.closest_to_mean(features, memory_per_task)
-                elif self._herding_selection["type"] == "random":
-                    selected_indexes = herding.random(features, memory_per_task)
-                elif self._herding_selection["type"] == "first":
-                    selected_indexes = np.arange(memory_per_task)
-                elif self._herding_selection["type"] == "kmeans":
-                    selected_indexes = herding.kmeans(
-                        features, memory_per_task, k=self._herding_selection["k"]
-                    )
-                elif self._herding_selection["type"] == "confusion":
-                    selected_indexes = herding.confusion(
-                        *self._last_results,
-                        memory_per_task,
-                        class_id=class_idx,
-                        minimize_confusion=self._herding_selection["minimize_confusion"]
-                    )
-                elif self._herding_selection["type"] == "var_ratio":
-                    selected_indexes = herding.var_ratio(
-                        memory_per_task, self._network, loader, **self._herding_selection
-                    )
-                elif self._herding_selection["type"] == "mcbn":
-                    selected_indexes = herding.mcbn(
-                        memory_per_task, self._network, loader, **self._herding_selection
-                    )
-                else:
-                    raise ValueError(
-                        "Unknown herding selection {}.".format(self._herding_selection)
-                    )
-
-                herding_indexes.append(selected_indexes)
-            else:
-                targets = []
-                for input_dict in loader:
-                    _targets = input_dict["targets"]
-                    _targets = _targets.numpy()
-                    targets.append(_targets)
-                targets = np.concatenate(targets)
-
-            # Reducing examplars:
-            try:
-                selected_indexes = herding_indexes[task_idx][:memory_per_task]
-                herding_indexes[task_idx] = selected_indexes
-            except:
-                import pdb
-                pdb.set_trace()
-
-            data_memory.append(inputs[selected_indexes])
-            targets_memory.append(targets[selected_indexes])
-
-        data_memory = np.concatenate(data_memory)
-        targets_memory = np.concatenate(targets_memory)
-
-
-        return data_memory, targets_memory, herding_indexes, class_means
 
     def build_examplars(
         self, inc_dataset, herding_indexes, memory_per_class=None, data_source="train"

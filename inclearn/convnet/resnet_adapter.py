@@ -8,6 +8,9 @@ from torch.nn import functional as F
 from torch.nn.functional import relu, avg_pool2d
 import torchvision
 import re
+import logging
+
+logger = logging.getLogger(__name__)
 
 __all__ = ['ResNet', 'resnet18_adapter']
 
@@ -77,6 +80,10 @@ class BasicBlock(nn.Module):
         self.planes = planes
         self.adapter = adapter
 
+    def set_mode(self, mode):
+        assert mode in ["single", "multi"]
+        self.mode = mode
+
     def add_classes(self, n_classes, device=0):
         if self.stride != 1 or self.in_planes != self.expansion * self.planes:
             self.shortcut_group.append(nn.Sequential(
@@ -95,50 +102,28 @@ class BasicBlock(nn.Module):
         :param x: list of input tensor (task_num, batch_size, input_size)
         :return: output tensor list, (task_num, 10)
         """
-        i = self.task_id
-        out = self.conv1(x)
-        out = self.adapters1_group[i](out)
-        out = relu(out)
-        out = self.conv2(out)
-        out = self.adapters2_group[i](out)
-        out += self.shortcut_group[i](x)
-        out = relu(out)
-        return out
-
-class Head(nn.Module):
-    """
-    CovNorm ResNet head
-    """
-    def __init__(self, nf: int, adapter, header_mode):
-        super(Head, self).__init__()
-        self.header_mode = header_mode
-
-        self.adapters_group = nn.ModuleList([])
-        if self.header_mode == 'small':
-            self.conv1 = conv3x3(3, nf * 1)
+        if self.mode == 'single':
+            i = self.task_id
+            out = self.conv1(x)
+            out = self.adapters1_group[i](out)
+            out = relu(out)
+            out = self.conv2(out)
+            out = self.adapters2_group[i](out)
+            out += self.shortcut_group[i](x)
+            out = relu(out)
+            return out
         else:
-            self.conv1 = nn.Conv2d(3, nf * 1, kernel_size=7, stride=2, padding=3, bias=False)
-            self.maxpool = nn.MaxPool2d(kernel_size=3, stride=2, padding=1)
-        self.task_id = 0
-
-        self.adapter = adapter
-        self.nf = nf
-
-    def add_classes(self, n_classes, device=0):
-        self.adapters_group.append(self.adapter(self.nf * 1).to(device))
-
-    def forward(self, x):
-        """
-        Compute a forward pass.
-        :param x: input tensor (batch_size, input_size)
-        :return: output tensor list, (task_num, 10)
-        """
-        i = self.task_id
-        if self.header_mode == 'small':
-            return relu(self.adapters_group[i](self.conv1(x)))
-        else:
-            x = F.interpolate(x, [256, 256], mode='bilinear')
-            return self.maxpool(relu(self.adapters_group[i](self.conv1(x))))
+            outs = []
+            for i in range(self.task_id + 1):
+                out = self.conv1(x[i])
+                out = self.adapters1_group[i](out)
+                out = relu(out)
+                out = self.conv2(out)
+                out = self.adapters2_group[i](out)
+                out += self.shortcut_group[i](x[i])
+                out = relu(out)
+                outs.append(out)
+            return outs
 
 class ResNet(nn.Module):
     """
@@ -150,11 +135,11 @@ class ResNet(nn.Module):
             block,
             layers,
             nf=64,
-            header_mode='small',
             adapter=CovAdapter,
-            pretrained=False,
             pretrained_model=None,
-            pretrained_mode_path=None,
+            prefix="",
+            initial_kernel=3,
+            init_mode="single",
             device=0,
             **kwargs
     ):
@@ -170,8 +155,17 @@ class ResNet(nn.Module):
         self.in_planes = nf
         self.block = block
         self.nf = nf
-        self.header_mode = header_mode
-        self.head = Head(nf, adapter, header_mode)
+        if initial_kernel == 3:
+            self.conv1 = nn.Conv2d(3, nf, kernel_size=initial_kernel, stride=1, padding=1, bias=False)
+        elif initial_kernel == 7:
+            self.conv1 = nn.Conv2d(3, nf, kernel_size=initial_kernel, stride=2, padding=3, bias=False)
+            self.maxpool = nn.MaxPool2d(kernel_size=3, stride=2, padding=1)
+        else:
+            raise NotImplementedError
+        self.initial_kernel = initial_kernel
+        self.header_adapters_group = nn.ModuleList([])
+        self.adapter = adapter
+        self.relu = nn.ReLU(inplace=True)
         self.layer1 = self._make_layer(block, nf * 1, layers[0], stride=1, adapter=adapter)
         self.layer2 = self._make_layer(block, nf * 2, layers[1], stride=2, adapter=adapter)
         self.layer3 = self._make_layer(block, nf * 4, layers[2], stride=2, adapter=adapter)
@@ -180,70 +174,37 @@ class ResNet(nn.Module):
         self._out_dim = nf * 8 * block.expansion
 
         self.task_id = -1
-        self.is_train = True
-        self.pretrained = pretrained
+        self.pretrained_model = pretrained_model
+        self.prefix = prefix
         self.device = device
+        self.set_mode(init_mode)
 
-        if pretrained:
-            if pretrained_model == 'ImageNet':
-                self.load_ImageNet_pretrained_model()
-            elif pretrained_model == 'ImageNet-800':
-                self.load_ImageNet800_pretrained_model(pretrained_mode_path)
+        if self.pretrained_model:
+            self.load_backbone()
 
     @property
     def out_dim(self):
         return self._out_dim
 
     def add_classes(self, n_classes):
-        self.set_status(self.task_id + 1, True)
-        return
-        self.head.add_classes(n_classes, device=self.device)
+        self.set_task_id(self.task_id + 1)
+        self.header_adapters_group.append(self.adapter(self.nf * 1).to(self.device))
         for layers in [self.layer1, self.layer2, self.layer3, self.layer4]:
             for layer in layers:
                 layer.add_classes(n_classes, device=self.device)
 
-    def load_ImageNet_pretrained_model(self):
-        assert self.header_mode == 'big', "Only standard ResNet18 architecture can load ImageNet pretrained model"
-        res18 = torchvision.models.resnet18(pretrained=True)
-
-        x = list(res18.children())
-        self.head.conv1.weight.data.copy_(x[0].weight.data)
-        self.layer1[0].conv1.weight.data.copy_(x[4][0].conv1.weight.data)
-        self.layer1[0].conv2.weight.data.copy_(x[4][0].conv2.weight.data)
-        self.layer1[1].conv1.weight.data.copy_(x[4][1].conv1.weight.data)
-        self.layer1[1].conv2.weight.data.copy_(x[4][1].conv2.weight.data)
-        self.layer2[0].conv1.weight.data.copy_(x[5][0].conv1.weight.data)
-        self.layer2[0].conv2.weight.data.copy_(x[5][0].conv2.weight.data)
-        self.layer2[1].conv1.weight.data.copy_(x[5][1].conv1.weight.data)
-        self.layer2[1].conv2.weight.data.copy_(x[5][1].conv2.weight.data)
-        self.layer3[0].conv1.weight.data.copy_(x[6][0].conv1.weight.data)
-        self.layer3[0].conv2.weight.data.copy_(x[6][0].conv2.weight.data)
-        self.layer3[1].conv1.weight.data.copy_(x[6][1].conv1.weight.data)
-        self.layer3[1].conv2.weight.data.copy_(x[6][1].conv2.weight.data)
-        self.layer4[0].conv1.weight.data.copy_(x[7][0].conv1.weight.data)
-        self.layer4[0].conv2.weight.data.copy_(x[7][0].conv2.weight.data)
-        self.layer4[1].conv1.weight.data.copy_(x[7][1].conv1.weight.data)
-        self.layer4[1].conv2.weight.data.copy_(x[7][1].conv2.weight.data)
-
-        self.freeze_backbone()
-
-    def load_ImageNet800_pretrained_model(self, pretrained_model):
-        for i in range(4):
-            self.head.add_classes(0, device=self.device)
-            for layers in [self.layer1, self.layer2, self.layer3, self.layer4]:
-                for layer in layers:
-                    layer.add_classes(0, device=self.device)
-        assert self.header_mode == 'big', "Only standard ResNet18 architecture can load ImageNet pretrained model"
-        res18 = torch.load(pretrained_model)
-        res18 = res18['state_dict']
-        prefix = "module.backbone."
+    def load_backbone(self):
+        state_dict = torch.load(self.pretrained_model)
         for name, p in self.named_parameters():
-            if '_group' in name:
-                if 'linear_group' not in name:
-                    task_id = int(re.match(r'.*group\.([0-9]*)\..*', name).group(1))
-                    p.data.copy_(res18[prefix+name.replace("_group.{}.".format(task_id), "_group.0.")].detach().cpu())
+            k = self.prefix + name
+            if k in state_dict:
+                if p.data.shape == state_dict[k].data.shape:
+                    logger.info("Load parameter {}".format(name))
+                    p.data.copy_(state_dict[k].data)
+                else:
+                    assert False, "Must load all parameters in backbone!"
             else:
-                p.data.copy_(res18[prefix+name].data.detach().cpu())
+                assert False, "Must load all parameters in backbone!"
 
         self.freeze_backbone()
 
@@ -265,13 +226,18 @@ class ResNet(nn.Module):
             self.in_planes = planes * block.expansion
         return nn.Sequential(*layers)
 
-    def set_status(self, task_id, train=True):
+    def set_task_id(self, task_id):
         self.task_id = task_id
-        self.is_train = train
-        self.head.task_id = task_id
         for layers in [self.layer1, self.layer2, self.layer3, self.layer4]:
             for layer in layers:
                 layer.task_id = task_id
+
+    def set_mode(self, mode):
+        assert mode in ["single", "multi"]
+        self.mode = mode
+        for layers in [self.layer1, self.layer2, self.layer3, self.layer4]:
+            for layer in layers:
+                layer.set_mode(mode)
 
     def get_parameters(self, task_id, freeze_backbone=False):
         for name, p in self.named_parameters():
@@ -298,8 +264,16 @@ class ResNet(nn.Module):
         :param x: input tensor (batch_size, *input_shape)
         :return: output tensor (output_classes)
         """
-        if self.is_train:
-            outs = self.head(x)
+        if isinstance(x, list):
+            x = x[0]
+
+        if self.mode == 'single':
+            i = self.task_id
+            if self.initial_kernel == 3:
+                outs = self.relu(self.adapters_group[i](self.conv1(x)))
+            else:
+                x = F.interpolate(x, [256, 256], mode='bilinear')
+                outs = self.maxpool(self.relu(self.adapters_group[i](self.conv1(x))))
             outs = self.layer1(outs)  # 64, 32, 32
             outs = self.layer2(outs)  # 128, 16, 16
             outs = self.layer3(outs)  # 256, 8, 8
@@ -310,26 +284,27 @@ class ResNet(nn.Module):
 
             return {"features": out}
         else:
-            max_task = self.task_id
-            out_list = []
-            for i in range(max_task + 1):
-                self.set_status(i, False)
-                outs = self.head(x)
-                outs = self.layer1(outs)  # 64, 32, 32
-                outs = self.layer2(outs)  # 128, 16, 16
-                outs = self.layer3(outs)  # 256, 8, 8
-                outs = self.layer4(outs)  # 512, 4, 4
+            outs = []
+            if self.initial_kernel == 7:
+                x = F.interpolate(x, [256, 256], mode='bilinear')
+            for i in range(self.task_id + 1):
+                if self.initial_kernel == 3:
+                    outs.append(self.relu(self.header_adapters_group[i](self.conv1(x))))
+                else:
+                    outs.append(self.maxpool(self.relu(self.header_adapters_group[i](self.conv1(x)))))
+            outs = self.layer1(outs)  # 64, 32, 32
+            outs = self.layer2(outs)  # 128, 16, 16
+            outs = self.layer3(outs)  # 256, 8, 8
+            outs = self.layer4(outs)  # 512, 4, 4
 
-                out = avg_pool2d(outs, outs.shape[2])  # 512, 1, 1
-                out = out.view(out.size(0), -1)  # 512
-                out_list.append(out)
-            return {"features": out_list}
+            for i in range(self.task_id + 1):
+                outs[i] = avg_pool2d(outs[i], outs[i].shape[2])
+                outs[i] = outs[i].view(outs[i].size(0), -1)
 
-def resnet18_adapter(pretrained=False,
-                     pretrained_model=None,
-                     pretrained_mode_path=None,
-                     header_mode = 'big',
-                     **kwargs):
+            out = torch.cat(outs, 1)
+            return {"features": out}
+
+def resnet18_adapter(**kwargs):
     """
     Instantiates a ResNet18 network.
     :param nclasses: number of output classes
@@ -337,9 +312,4 @@ def resnet18_adapter(pretrained=False,
     :return: ResNet network
     """
     return ResNet(BasicBlock, [2, 2, 2, 2],
-                  header_mode = header_mode,
-                  adapter=CovAdapter,
-                  pretrained=pretrained,
-                  pretrained_model=pretrained_model,
-                  pretrained_mode_path=pretrained_mode_path,
                   **kwargs)

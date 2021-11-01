@@ -1,15 +1,17 @@
-dataset: cifar100
+dataset: imagenet1000
 
-eval_every_x_epochs: 5
+eval_every_x_epochs: 10
 
 model: joint
 convnet: resnet18
 convnet_config:
   nf: 64
 
-lr: 0.03
-weight_decay: 0
+lr: 0.1
+weight_decay: 0.0001
 scheduling:
+  - 31
+  - 61
 lr_decay: 0.1
 optimizer: sgd
-epochs: 100
+epochs: 90

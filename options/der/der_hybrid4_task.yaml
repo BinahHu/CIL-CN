@@ -3,15 +3,18 @@ dataset: cifar100
 model: der
 convnet: multinet
 convnet_config:
+  pretrained_model: /home/zhiyuan/CIL-CN/saved_models/der_imagenet_official.pth
+  #prefix: "convnet.convnets.0."
   sub_convnet: resnet18
   sub_convnet_config:
     last_relu: True
     nf: 64
+    initial_kernel: 7
 
 eval_every_x_epochs: 10
 
 fixed_memory: False
-memory_size: 2000
+memory_size: 10000
 
 eval_type: cnn
 
@@ -28,7 +31,7 @@ classifier_config:
 
 shortcut_epochs: 0
 
-task_max: 20
+task_max: 10
 
 distillation: "none"
 temperature: 1
@@ -39,32 +42,27 @@ finetuning_config:
   sampling: decouple
   tuning: classifier
   lr: 0.05
-  epochs: 50
-  weight_decay: 0.0005
+  epochs: 80
+  weight_decay: 0.000
   temperature: 5.0
-  scheduling:
-    - 15
-    - 30
+  scheduling: cosine
   lr_decay: 0.1
   scaling: null
 
 # Scheduling
-scheduler: multistep
-scheduling:
-  - 100
-  - 120
+scheduling: cosine
 warmup:
   total_epoch: 10
   multiplier: 1
   only_first_step: False
 
 # Misc
-epochs: 170
-lr: 0.1
+epochs: 50
+lr: 0.05
 lr_decay: 0.1
 optimizer: sgd
 proxy_per_class: 1
-weight_decay: 0.0005
+weight_decay: 0.000
 
 dataset_transforms:
   color_jitter: true

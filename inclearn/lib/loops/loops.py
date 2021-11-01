@@ -122,8 +122,10 @@ def _print_metrics(metrics, prog_bar, epoch, nb_epochs, nb_batches, task, n_task
         for metric_name, metric_value in metrics.items()
     )
 
+    info = "T{}/{}, E{}/{} => {}".format(task + 1, n_tasks, epoch + 1, nb_epochs, pretty_metrics)
+    logger.info(info)
     prog_bar.set_description(
-        "T{}/{}, E{}/{} => {}".format(task + 1, n_tasks, epoch + 1, nb_epochs, pretty_metrics)
+        info
     )
 
 

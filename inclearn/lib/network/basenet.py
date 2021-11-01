@@ -6,7 +6,8 @@ from torch import nn
 
 from inclearn.lib import factory
 
-from .classifiers import (Classifier, CosineClassifier, DomainClassifier, MCCosineClassifier, TaskClassifier, WithAuxClassifier)
+from .classifiers import (Classifier, CosineClassifier, DomainClassifier,MCCosineClassifier, TaskClassifier,
+                          WithAuxClassifier, MultiClassifier)
 from .postprocessors import FactorScalar, HeatedUpScalar, InvertedFactorScalar
 from .word import Word2vec
 
@@ -65,6 +66,8 @@ class BasicNet(nn.Module):
             self.classifier = WithAuxClassifier(
                 self.convnet.out_dim, device=device, **classifier_kwargs
             )
+        elif classifier_kwargs["type"] == "multi":
+            self.classifier = MultiClassifier(self.convnet.out_dim, device=device, **classifier_kwargs)
         else:
             raise ValueError("Unknown classifier type {}.".format(classifier_kwargs["type"]))
 

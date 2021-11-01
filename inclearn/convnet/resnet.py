@@ -118,10 +118,16 @@ class ResNet(nn.Module):
 
         self.last_relu = last_relu
         self.inplanes = nf
-        self.conv1 = nn.Conv2d(3, nf, kernel_size=initial_kernel, stride=1, padding=1, bias=False)
+        if initial_kernel == 3:
+            self.conv1 = nn.Conv2d(3, nf, kernel_size=initial_kernel, stride=1, padding=1, bias=False)
+        elif initial_kernel == 7:
+            self.conv1 = nn.Conv2d(3, nf, kernel_size=initial_kernel, stride=2, padding=3, bias=False)
+            self.maxpool = nn.MaxPool2d(kernel_size=3, stride=2, padding=1)
+        else:
+            raise NotImplementedError
+        self.initial_kernel = initial_kernel
         self.bn1 = nn.BatchNorm2d(nf)
         self.relu = nn.ReLU(inplace=True)
-        self.maxpool = nn.MaxPool2d(kernel_size=3, stride=2, padding=1)
         self.layer1 = self._make_layer(block, 1 * nf, layers[0])
         self.layer2 = self._make_layer(block, 2 * nf, layers[1], stride=2)
         self.layer3 = self._make_layer(block, 4 * nf, layers[2], stride=2)
@@ -177,7 +183,15 @@ class ResNet(nn.Module):
         return self.layer4[-1].conv2
 
     def forward(self, x):
-        x = self.conv1(x)
+        if self.initial_kernel == 3:
+            x = self.conv1(x)
+        elif self.initial_kernel == 7:
+            _, _, h, w = x.shape
+            x = F.interpolate(x, [7 * h, 7 * w], mode='bilinear')
+            x = self.conv1(x)
+            x = self.maxpool(x)
+        else:
+            raise NotImplementedError
         x = self.bn1(x)
         x = self.relu(x)
         #x = self.maxpool(x)

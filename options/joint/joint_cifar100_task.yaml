@@ -1,5 +1,5 @@
 dataset: cifar100
-validation: 0.1
+
 eval_every_x_epochs: 5
 
 model: joint

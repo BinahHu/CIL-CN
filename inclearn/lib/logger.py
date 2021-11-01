@@ -1,7 +1,7 @@
 import logging
 
 
-def set_logging_level(logging_level):
+def set_logging_level(logging_level, file_path=None):
     logging_level = logging_level.lower()
 
     if logging_level == "critical":
@@ -13,6 +13,13 @@ def set_logging_level(logging_level):
     else:
         level = logging.DEBUG
 
-    logging.basicConfig(
-        format='%(asctime)s [%(filename)s]: %(message)s', datefmt='%Y-%m-%d:%H:%M:%S', level=level
-    )
+    if file_path is not None:
+        logging.basicConfig(
+            format='%(asctime)s [%(filename)s]: %(message)s', datefmt='%Y-%m-%d:%H:%M:%S', level=level,
+            filename=file_path,
+            filemode='w'
+        )
+    else:
+        logging.basicConfig(
+            format='%(asctime)s [%(filename)s]: %(message)s', datefmt='%Y-%m-%d:%H:%M:%S', level=level
+        )

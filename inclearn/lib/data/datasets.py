@@ -4,6 +4,7 @@ import logging
 import math
 import os
 import warnings
+import json
 
 import numpy as np
 from torchvision import datasets, transforms
@@ -78,13 +79,14 @@ class iPermutedMNIST(iMNIST):
 
 class ImageNet100(DataHandler):
     train_transforms = [
-        transforms.RandomResizedCrop(224),
+        transforms.Resize((36, 36)),
+        transforms.RandomCrop(32),
         transforms.RandomHorizontalFlip(),
         transforms.ColorJitter(brightness=63 / 255)
     ]
     test_transforms = [
-        transforms.Resize(256),
-        transforms.CenterCrop(224),
+        transforms.Resize((36, 36)),
+        transforms.CenterCrop(32),
     ]
     common_transforms = [
         transforms.ToTensor(),
@@ -550,3 +552,97 @@ class LAD(DataHandler):
         print(f"{len(self.data)} images for {len(self.label_to_id)} classes.")
 
         return self
+
+
+class JsonDataset(DataHandler):
+    train_transforms = None
+    test_transforms = None
+    common_transforms = None
+
+    open_image = True
+
+    class_order = None
+
+    def set_custom_transforms(self, transforms_dict):
+        pass
+
+    def base_dataset(self, data_path, train=True, download=False):
+        file_name = "train.json" if train else "test.json"
+        file_path = os.path.join(data_path, file_name)
+        f = open(file_path, 'r')
+        img_class = json.load(f)
+        f.close()
+
+        self.data = []
+        self.targets = []
+
+        for img_path, class_id in img_class:
+            img_path = os.path.join(data_path, img_path)
+            self.data.append(img_path)
+            self.targets.append(class_id)
+
+        self.data = np.array(self.data)
+        self.targets = np.array(self.targets)
+
+        return self
+
+
+class CUB(JsonDataset):
+    train_transforms = [
+        transforms.RandomResizedCrop(56),
+        transforms.RandomHorizontalFlip(),
+    ]
+    test_transforms = [
+        transforms.Resize(64),
+        transforms.CenterCrop(56),
+    ]
+    common_transforms = [
+        transforms.ToTensor(),
+        transforms.Normalize(mean=[0.4836, 0.4921, 0.4243], std=[0.2286, 0.2242, 0.2595])
+    ]
+    class_order = list(range(200))
+
+class FGVC(JsonDataset):
+    train_transforms = [
+        transforms.RandomResizedCrop(56),
+        transforms.RandomHorizontalFlip(),
+    ]
+    test_transforms = [
+        transforms.Resize(64),
+        transforms.CenterCrop(56),
+    ]
+    common_transforms = [
+        transforms.ToTensor(),
+        transforms.Normalize(mean=[0.4883, 0.5176, 0.5385], std=[0.2211, 0.2137, 0.2440])
+    ]
+    class_order = list(range(100))
+
+class Flower(JsonDataset):
+    train_transforms = [
+        transforms.RandomResizedCrop(56),
+        transforms.RandomHorizontalFlip(),
+    ]
+    test_transforms = [
+        transforms.Resize(64),
+        transforms.CenterCrop(56),
+    ]
+    common_transforms = [
+        transforms.ToTensor(),
+        transforms.Normalize(mean=[0.5179, 0.4111, 0.3298], std=[0.2971, 0.2496, 0.2855])
+    ]
+    class_order = list(range(102))
+
+class Dog(JsonDataset):
+    train_transforms = [
+        transforms.RandomResizedCrop(56),
+        transforms.RandomHorizontalFlip(),
+    ]
+    test_transforms = [
+        transforms.Resize(64),
+        transforms.CenterCrop(56),
+    ]
+    common_transforms = [
+        transforms.ToTensor(),
+        transforms.Normalize(mean=[0.4787, 0.4466, 0.3888], std=[0.2589, 0.2520, 0.2545])
+    ]
+    class_order = list(range(120))

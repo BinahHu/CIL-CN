@@ -56,9 +56,7 @@ class Joint(IncrementalLearner):
         if self._scheduling is None:
             self._scheduler = None
         else:
-            self._scheduler = torch.optim.lr_scheduler.MultiStepLR(
-                self._optimizer, self._scheduling, gamma=self._lr_decay
-            )
+            self._scheduler = factory.get_lr_scheduler(self._scheduling, self._optimizer, nb_epochs=self._n_epochs)
 
     def _train_task(self, train_loader, val_loader):
         if self._task < self._n_tasks - 1:
@@ -67,7 +65,7 @@ class Joint(IncrementalLearner):
         _, train_loader = self.inc_dataset.get_custom_loader(
             list(range(self._n_classes)), mode="train", data_source="train_full")
         _, val_loader = self.inc_dataset.get_custom_loader(
-            list(range(self._n_classes)), data_source="val_full")
+            list(range(self._n_classes)), data_source="val_full" if self._args.get('validation', 0) > 0 else "test_full")
 
         loops.single_loop(
             train_loader,
@@ -107,8 +105,8 @@ class Joint(IncrementalLearner):
         ypred, ytrue = self._eval_task(loader)
         ypred = ypred.argmax(axis=1)
         pos = ypred != ytrue
-        print("{} pred".format(ypred[pos][:60]))
-        print("{} targets".format(ytrue[pos][:60]))
+        logger.info("{} pred".format(ypred[pos][:60]))
+        logger.info("{} targets".format(ytrue[pos][:60]))
 
         return 100 * round(np.mean(ypred == ytrue), 3)
 

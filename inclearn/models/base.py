@@ -32,7 +32,7 @@ class IncrementalLearner(abc.ABC):
         self._n_test_data = task_info["n_test_data"]
         self._n_tasks = task_info["max_task"]
         self._is_task_level = task_info["is_task_dataset"]
-        self._task_increment = task_info["task_increment"]
+        self.first_inc = task_info["first_increment"]
 
     def before_task(self, train_loader, val_loader):
         LOGGER.info("Before task")
@@ -80,7 +80,7 @@ class IncrementalLearner(abc.ABC):
     def _eval_task(self, data_loader):
         raise NotImplementedError
 
-    def save_metadata(self, directory, run_id):
+    def save_metadata(self, directory, run_id, latest=False):
         pass
 
     def load_metadata(self, directory, run_id):
@@ -102,9 +102,13 @@ class IncrementalLearner(abc.ABC):
     def network(self):
         return self._network
 
-    def save_parameters(self, directory, run_id):
-        path = os.path.join(directory, f"net_{run_id}_task_{self._task}.pth")
-        logger.info(f"Saving model at {path}.")
+    def save_parameters(self, directory, run_id, latest=False):
+        if latest:
+            path = os.path.join(directory, f"net_{run_id}.pth")
+            logger.info(f"Saving LATEST model at {path} on task {self._task+1}.")
+        else:
+            path = os.path.join(directory, f"net_{run_id}_task_{self._task}.pth")
+            logger.info(f"Saving model at {path}.")
         torch.save(self.network.state_dict(), path)
 
     def load_parameters(self, directory, run_id):

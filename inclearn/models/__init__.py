@@ -11,3 +11,4 @@ from .zil import ZIL
 from .der import DER
 from .oracle import Oracle
 from .joint import Joint
+from .covnorm import CovNorm

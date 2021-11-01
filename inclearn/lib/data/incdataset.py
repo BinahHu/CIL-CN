@@ -10,7 +10,7 @@ from inclearn.lib.utils import construct_balanced_subset
 
 from .datasets import (
     APY, CUB200, LAD, AwA2, ImageNet100, ImageNet100UCIR, ImageNet1000, TinyImageNet200, iCIFAR10,
-    iCIFAR100
+    iCIFAR100, CUB, FGVC, Flower, Dog
 )
 
 logger = logging.getLogger(__name__)
@@ -55,9 +55,12 @@ class IncrementalDataset:
         dataset_transforms=None,
         all_test_classes=False,
         metadata_path=None,
-        is_task_dataset=False
+        is_task_dataset=False,
+        split=None,
+        global_multi_order=None
     ):
         datasets = _get_datasets(dataset_name)
+        self.multi_dataset = (len(datasets) > 1)
         if metadata_path:
             print("Adding metadata path {}".format(metadata_path))
             datasets[0].metadata_path = metadata_path
@@ -68,20 +71,27 @@ class IncrementalDataset:
             datasets,
             random_order=random_order,
             class_order=class_order,
+            global_multi_order=global_multi_order,
             seed=seed,
             increment=increment,
             validation_split=validation_split,
             initial_increment=initial_increment,
-            data_path=data_path
+            data_path=data_path,
+            split=split
         )
 
-        dataset = datasets[0]()
-        dataset.set_custom_transforms(dataset_transforms)
-        self.train_transforms = dataset.train_transforms  # FIXME handle multiple datasets
-        self.test_transforms = dataset.test_transforms
-        self.common_transforms = dataset.common_transforms
+        self.train_transforms = []
+        self.test_transforms = []
+        self.common_transforms = []
+        self.open_image = []
 
-        self.open_image = datasets[0].open_image
+        for dataset in datasets:
+            dataset = dataset()
+            dataset.set_custom_transforms(dataset_transforms)
+            self.train_transforms.append(dataset.train_transforms)
+            self.test_transforms.append(dataset.test_transforms)
+            self.common_transforms.append(dataset.common_transforms)
+            self.open_image.append(dataset.open_image)
 
         self._current_task = 0
 
@@ -102,11 +112,18 @@ class IncrementalDataset:
     def n_classes(self):
         return sum(self.increments)
 
-    def new_task(self, memory=None, memory_val=None, merge_first=False):
+    def new_task(self, memory=None, memory_val=None, merge_first=False, merge_two=False):
+        first_inc = None
         if merge_first:
             self._current_task = 1
             min_class = sum(self.increments[:self._current_task-1])
             max_class = sum(self.increments[:self._current_task + 1])
+        elif merge_two:
+            self._current_task += 1
+            min_class = sum(self.increments[:self._current_task - 1])
+            mid_class = sum(self.increments[:self._current_task])
+            max_class = sum(self.increments[:self._current_task + 1])
+            first_inc = mid_class - min_class
         else:
             if self._current_task >= len(self.increments):
                 raise Exception("No more tasks.")
@@ -164,12 +181,12 @@ class IncrementalDataset:
             "max_class": max_class,
             "total_n_classes": sum(self.increments),
             "increment": nb_new_classes,  # self.increments[self._current_task],
+            "first_increment": first_inc,
             "task": self._current_task,
             "max_task": len(self.increments),
             "n_train_data": x_train.shape[0],
             "n_test_data": x_test.shape[0],
-            "is_task_dataset": self.is_task_dataset,
-            "task_increment": 2 if merge_first else 1
+            "is_task_dataset": self.is_task_dataset
         }
 
         self._current_task += 1
@@ -194,7 +211,7 @@ class IncrementalDataset:
         return x, y, memory_flags
 
     def get_custom_loader(
-        self, class_indexes, memory=None, mode="test", data_source="train", sampler=None
+        self, class_indexes, memory=None, mode="test", data_source="train", sampler=None, batch_size=None
     ):
         """Returns a custom loader.
 
@@ -206,9 +223,12 @@ class IncrementalDataset:
         if not isinstance(class_indexes, list):  # TODO: deprecated, should always give a list
             class_indexes = [class_indexes]
         shuffle = False
-        if data_source in ["train", "train_full"]:
+        if data_source in ["train", "train_full", "train_example"]:
             x, y = self.data_train, self.targets_train
-            shuffle = True
+            if data_source == "train_example":
+                shuffle = False
+            else:
+                shuffle = True
         elif data_source in ["val", "val_full"]:
             x, y = self.data_val, self.targets_val
             shuffle = True
@@ -247,7 +267,7 @@ class IncrementalDataset:
                 memory_flags = np.zeros((data.shape[0],))
 
         return data, self._get_loader(
-            data, targets, memory_flags, shuffle=shuffle, mode=mode, sampler=sampler
+            data, targets, memory_flags, shuffle=shuffle, mode=mode, sampler=sampler, batch_size=batch_size
         )
 
     def get_memory_loader(self, data, targets):
@@ -255,48 +275,21 @@ class IncrementalDataset:
             data, targets, np.ones((data.shape[0],)), shuffle=True, mode="train"
         )
 
-    def get_balanced_memory_loader(self, data_memory, targets_memory, low_range, high_range, is_task=False):
+    def get_balanced_memory_loader(self, data_memory, targets_memory, low_range, high_range):
         data, targets = self._select(self.data_train, self.targets_train,
                                      low_range=low_range,
                                      high_range=high_range)
 
         data = np.array(data)
         targets = np.array(targets)
-        '''
-        if is_task:
-            shuffle_idx = list(range(data.shape[0]))
-            random.shuffle(shuffle_idx)
-            data = data[shuffle_idx]
-            targets = targets[shuffle_idx]
-
-            #Trick, map labels of the same task into one class
-            for i in range(targets_memory.shape[0]):
-                y_cls = targets[i]
-                y_task = self._find_task_idx(y_cls)
-                targets_memory[i] = sum(self.increments[:y_task])
-
-            for i in range(targets.shape[0]):
-                y_cls = targets[i]
-                y_task = self._find_task_idx(y_cls)
-                targets[i] = sum(self.increments[:y_task])
-
-            #FIXME: Here we assume number of samples in the dataset is always
-            # larger than the buffer, but this may not be true
-            #min_size = min(data.shaepe[0], data_memory.shape[0])
-            min_size = data_memory.shape[0]
-
-            data = data[:min_size]
-            targets = targets[:min_size]
-        '''
 
         x = np.concatenate((data, data_memory))
         y = np.concatenate((targets, targets_memory))
 
-        #if not is_task:
         x, y = construct_balanced_subset(x, y)
 
         return self._get_loader(
-            x, y, np.ones((x.shape[0],)), shuffle=True, mode="train"
+            x, y, np.zeros((x.shape[0],)), shuffle=True, mode="train"
         )
 
     def _find_task_idx(self, y_cls):
@@ -311,20 +304,22 @@ class IncrementalDataset:
         idxes = np.where(np.logical_and(y >= low_range, y < high_range))[0]
         return x[idxes], y[idxes]
 
-    def _get_loader(self, x, y, memory_flags, shuffle=True, mode="train", sampler=None):
-        if mode == "train":
-            trsf = transforms.Compose([*self.train_transforms, *self.common_transforms])
-        elif mode == "test":
-            trsf = transforms.Compose([*self.test_transforms, *self.common_transforms])
-        elif mode == "flip":
-            trsf = transforms.Compose(
-                [
-                    transforms.RandomHorizontalFlip(p=1.), *self.test_transforms,
-                    *self.common_transforms
-                ]
-            )
-        else:
-            raise NotImplementedError("Unknown mode {}.".format(mode))
+    def _get_loader(self, x, y, memory_flags, shuffle=True, mode="train", sampler=None, batch_size=None):
+        trsf = []
+        for i in range(len(self.train_transforms)):
+            if mode == "train":
+                trsf.append(transforms.Compose([*self.train_transforms[i], *self.common_transforms[i]]))
+            elif mode == "test":
+                trsf.append(transforms.Compose([*self.test_transforms[i], *self.common_transforms[i]]))
+            elif mode == "flip":
+                trsf.append(transforms.Compose(
+                    [
+                        transforms.RandomHorizontalFlip(p=1.), *self.test_transforms[i],
+                        *self.common_transforms[i]
+                    ]
+                ))
+            else:
+                raise NotImplementedError("Unknown mode {}.".format(mode))
 
         sampler = sampler or self._sampler
         if sampler is not None and mode == "train":
@@ -333,11 +328,13 @@ class IncrementalDataset:
             batch_size = 1
         else:
             sampler = None
-            batch_size = self._batch_size
+            if batch_size is None:
+                batch_size = self._batch_size
 
         return DataLoader(
             DummyDataset(x, y, memory_flags, trsf, open_image=self.open_image, one_hot=self._onehot,
-                         is_task_dataset=self.is_task_dataset, map_to_task=self._map_to_task),
+                         is_task_dataset=self.is_task_dataset, map_to_task=self._map_to_task,
+                         map_to_dataset=self._map_to_dataset, is_multi_dataset=self.multi_dataset),
             batch_size=batch_size,
             shuffle=shuffle if sampler is None else False,
             num_workers=self._workers,
@@ -349,11 +346,13 @@ class IncrementalDataset:
         datasets,
         random_order=False,
         class_order=None,
+        global_multi_order=None,
         seed=1,
         increment=10,
         validation_split=0.,
         initial_increment=None,
-        data_path="data"
+        data_path="data",
+        split=None
     ):
         # FIXME: handles online loading of images
         self.data_train, self.targets_train = [], []
@@ -362,11 +361,14 @@ class IncrementalDataset:
         self.increments = []
         self.class_order = []
         self._map_to_task = {}
+        self._map_to_dataset = {}
+        if isinstance(data_path, str):
+            data_path = [data_path]
 
         current_class_idx = 0  # When using multiple datasets
-        for dataset in datasets:
-            train_dataset = dataset().base_dataset(data_path, train=True, download=True)
-            test_dataset = dataset().base_dataset(data_path, train=False, download=True)
+        for di, dataset in enumerate(datasets):
+            train_dataset = dataset().base_dataset(data_path[di], train=True, download=True)
+            test_dataset = dataset().base_dataset(data_path[di], train=False, download=True)
 
             x_train, y_train = train_dataset.data, np.array(train_dataset.targets)
             x_val, y_val, x_train, y_train = self._split_per_class(
@@ -375,7 +377,9 @@ class IncrementalDataset:
             x_test, y_test = test_dataset.data, np.array(test_dataset.targets)
 
             order = list(range(len(np.unique(y_train))))
-            if random_order:
+            if global_multi_order:
+                order = global_multi_order[di]
+            elif random_order:
                 random.seed(seed)  # Ensure that following order is determined by seed:
                 random.shuffle(order)
             elif class_order:
@@ -389,42 +393,56 @@ class IncrementalDataset:
 
             self.class_order.append(order)
 
-            y_train = self._map_new_class_index(y_train, order)
-            y_val = self._map_new_class_index(y_val, order)
-            y_test = self._map_new_class_index(y_test, order)
+            if global_multi_order:
+                y_train = self._map_new_class_index(y_train, order, dict_order=True)
+                y_val = self._map_new_class_index(y_val, order, dict_order=True)
+                y_test = self._map_new_class_index(y_test, order, dict_order=True)
+            else:
+                y_train = self._map_new_class_index(y_train, order, dict_order=False)
+                y_val = self._map_new_class_index(y_val, order, dict_order=False)
+                y_test = self._map_new_class_index(y_test, order, dict_order=False)
 
-            y_train += current_class_idx
-            y_val += current_class_idx
-            y_test += current_class_idx
+            if global_multi_order is None:
+                y_train += current_class_idx
+                y_val += current_class_idx
+                y_test += current_class_idx
+
+            for y in np.unique(y_train):
+                self._map_to_dataset[y] = di
 
             current_class_idx += len(order)
-            if len(datasets) > 1:
-                self.increments.append(len(order))
-            elif initial_increment is None:
-                nb_steps = len(order) / increment
-                remainder = len(order) - int(nb_steps) * increment
+            if split is None:
+                # If splitting is not given
+                if self.multi_dataset:
+                    self.increments.append(len(order))
+                elif initial_increment is None:
+                    nb_steps = len(order) / increment
+                    remainder = len(order) - int(nb_steps) * increment
 
-                if not nb_steps.is_integer():
-                    logger.warning(
-                        f"THe last step will have sligthly less sample ({remainder} vs {increment})."
-                    )
-                    self.increments = [increment for _ in range(int(nb_steps))]
-                    self.increments.append(remainder)
+                    if not nb_steps.is_integer():
+                        logger.warning(
+                            f"THe last step will have sligthly less sample ({remainder} vs {increment})."
+                        )
+                        self.increments = [increment for _ in range(int(nb_steps))]
+                        self.increments.append(remainder)
+                    else:
+                        self.increments = [increment for _ in range(int(nb_steps))]
                 else:
-                    self.increments = [increment for _ in range(int(nb_steps))]
-            else:
-                self.increments = [initial_increment]
+                    self.increments = [initial_increment]
 
-                nb_steps = (len(order) - initial_increment) / increment
-                remainder = (len(order) - initial_increment) - int(nb_steps) * increment
-                if not nb_steps.is_integer():
-                    logger.warning(
-                        f"THe last step will have sligthly less sample ({remainder} vs {increment})."
-                    )
-                    self.increments.extend([increment for _ in range(int(nb_steps))])
-                    self.increments.append(remainder)
-                else:
-                    self.increments.extend([increment for _ in range(int(nb_steps))])
+                    nb_steps = (len(order) - initial_increment) / increment
+                    remainder = (len(order) - initial_increment) - int(nb_steps) * increment
+                    if not nb_steps.is_integer():
+                        logger.warning(
+                            f"THe last step will have sligthly less sample ({remainder} vs {increment})."
+                        )
+                        self.increments.extend([increment for _ in range(int(nb_steps))])
+                        self.increments.append(remainder)
+                    else:
+                        self.increments.extend([increment for _ in range(int(nb_steps))])
+            if split is not None:
+                # If splitting is given
+                self.increments = split
 
             self.data_train.append(x_train)
             self.targets_train.append(y_train)
@@ -445,9 +463,12 @@ class IncrementalDataset:
         self.targets_test = np.concatenate(self.targets_test)
 
     @staticmethod
-    def _map_new_class_index(y, order):
+    def _map_new_class_index(y, order, dict_order=False):
         """Transforms targets for new class order."""
-        return np.array(list(map(lambda x: order.index(x), y)))
+        if dict_order:
+            return np.array(list(map(lambda x: order[x], y)))
+        else:
+            return np.array(list(map(lambda x: order.index(x), y)))
 
     @staticmethod
     def _split_per_class(x, y, validation_split=0.):
@@ -481,17 +502,31 @@ class IncrementalDataset:
 
 class DummyDataset(torch.utils.data.Dataset):
 
-    def __init__(self, x, y, memory_flags, trsf, open_image=False, one_hot=False,
-                 is_task_dataset=False, map_to_task=None):
+    def __init__(self, x, y, memory_flags, trsf, open_image=None, one_hot=False,
+                 is_task_dataset=False, map_to_task=None, map_to_dataset=None, is_multi_dataset=False):
         self.x, self.y = x, y
         self.is_task_dataset = is_task_dataset
-        if self.is_task_dataset:
-            self.y_task = self._get_y_task(one_hot, y, map_to_task)
+        self.y_task = self._get_y_task(one_hot, y, map_to_task)
+        self.y_dataset = self._get_y_dataset(one_hot, y, map_to_dataset)
         self.memory_flags = memory_flags
         self.trsf = trsf
-        self.open_image = open_image
+        self.open_image = [False] if open_image is None else open_image
+        self.is_multi_dataset = is_multi_dataset
 
         assert x.shape[0] == y.shape[0] == memory_flags.shape[0]
+
+    def _get_y_dataset(self, one_hot, y, map_to_dataset):
+        y_dataset = np.zeros((y.shape[0],), dtype=np.int64)
+
+        if one_hot:
+            y_class = np.where(self.y == 1)[1]
+        else:
+            y_class = self.y
+
+        for i, d in enumerate(y_class):
+            y_dataset[i] = map_to_dataset[d]
+
+        return y_dataset
 
     def _get_y_task(self, one_hot, y, map_to_task):
         y_task = np.zeros((y.shape[0],), dtype=np.int64)
@@ -511,20 +546,19 @@ class DummyDataset(torch.utils.data.Dataset):
 
     def __getitem__(self, idx):
         x, y = self.x[idx], self.y[idx]
+        y_task = self.y_task[idx]
+        y_dataset = self.y_dataset[idx]
         memory_flag = self.memory_flags[idx]
+        dataset_id = y_dataset
 
-        if self.open_image:
+        if self.open_image[dataset_id]:
             img = Image.open(x).convert("RGB")
         else:
             img = Image.fromarray(x.astype("uint8"))
 
-        img = self.trsf(img)
+        img = self.trsf[dataset_id](img)
 
-        if self.is_task_dataset:
-            y_task = self.y_task[idx]
-            return {"inputs": img, "targets": y, "targets_task": y_task, "memory_flags": memory_flag}
-        else:
-            return {"inputs": img, "targets": y, "memory_flags": memory_flag}
+        return {"inputs": img, "targets": y, "targets_task": y_task, "targets_dataset":y_dataset, "memory_flags": memory_flag}
 
 
 def _get_datasets(dataset_names):
@@ -554,5 +588,13 @@ def _get_dataset(dataset_name):
         return APY
     elif dataset_name == "lad":
         return LAD
+    elif dataset_name == "cub":
+        return CUB
+    elif dataset_name == "fgvc":
+        return FGVC
+    elif dataset_name == "flower":
+        return Flower
+    elif dataset_name == "dog":
+        return Dog
     else:
         raise NotImplementedError("Unknown dataset {}.".format(dataset_name))

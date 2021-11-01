@@ -6,7 +6,7 @@ from torch import optim
 from inclearn import models
 from inclearn.convnet import (
     densenet, my_resnet, my_resnet2, my_resnet_brn, my_resnet_mcbn, my_resnet_mtl, resnet,
-    resnet_mtl, ucir_resnet, vgg, multi_convnet
+    resnet_mtl, ucir_resnet, vgg, multi_convnet, resnet_adapter
 )
 from inclearn.lib import data, schedulers
 
@@ -55,6 +55,8 @@ def get_convnet(convnet_type, **kwargs):
         return vgg.vgg19_bn(**kwargs)
     elif convnet_type == "multinet":
         return multi_convnet.multinet(**kwargs)
+    elif convnet_type == "resnet18_adapter":
+        return resnet_adapter.resnet18_adapter(**kwargs)
 
     raise NotImplementedError("Unknwon convnet type {}.".format(convnet_type))
 
@@ -73,7 +75,8 @@ def get_model(args):
         "lwm": models.LwM,
         "zil": models.ZIL,
         "gdumb": models.GDumb,
-        "der": models.DER
+        "der": models.DER,
+        "covnorm": models.CovNorm
     }
 
     model = args["model"].lower()
@@ -105,7 +108,9 @@ def get_data(args, class_order=None):
         dataset_transforms=args.get("dataset_transforms", {}),
         all_test_classes=args.get("all_test_classes", False),
         metadata_path=args.get("metadata_path"),
-        is_task_dataset=args.get("task", False)
+        is_task_dataset=args.get("task", False),
+        split=args.get("split", None),
+        global_multi_order=args.get("global_multi_order", None)
     )
 
 
@@ -186,5 +191,4 @@ def get_lr_scheduler(
             scheduler = schedulers.GradualWarmupScheduler(
                 optimizer=optimizer, after_scheduler=scheduler, **warmup_config
             )
-
     return scheduler

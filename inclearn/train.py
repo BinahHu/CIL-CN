@@ -16,14 +16,15 @@ from inclearn.lib import factory
 from inclearn.lib import logger as logger_lib
 from inclearn.lib import metrics, results_utils, utils
 
+LAST = -1
 logger = logging.getLogger(__name__)
 
 def train(args):
-    logger_lib.set_logging_level(args["logging"])
-
     autolabel = _set_up_options(args)
     if args["autolabel"]:
         args["label"] = autolabel
+
+    logger_lib.set_logging_level(args["logging"], file_path="log/{}.log".format(args["label"]))
 
     if args["label"]:
         logger.info("Label: {}".format(args["label"]))
@@ -95,11 +96,19 @@ def _train(args, start_date, class_order, run_id):
     metric_logger = metrics.MetricLogger(
         inc_dataset.n_tasks, inc_dataset.n_classes, inc_dataset.increments, args['task']
     )
+    merge2 = args.get("merge_two", False)
 
     for task_id in range(inc_dataset.n_tasks):
+        if task_id == (inc_dataset.n_tasks if LAST == -1 else LAST):
+            # break earlier
+            break
         if args["merge"] and task_id == 0:
             continue
-        task_info, train_loader, val_loader, test_loader = inc_dataset.new_task(memory, memory_val, merge_first=((task_id == 1) and args["merge"]))
+        if merge2 and task_id % 2 == 0:
+            continue
+        task_info, train_loader, val_loader, test_loader = inc_dataset.new_task(memory, memory_val,
+                                                                                merge_first=((task_id == 1) and args["merge"]),
+                                                                                merge_two=merge2)
         if task_info["task"] == args["max_task"]:
             break
 
@@ -115,7 +124,11 @@ def _train(args, start_date, class_order, run_id):
         # 2. Train Task
         # -------------
         if args["mode"] == "train":
-            _train_task(args, model, train_loader, val_loader, test_loader, run_id, task_id, task_info)
+            if task_id < 0:
+            #if task_id < inc_dataset.n_tasks - 1:
+                pass
+            else:
+                _train_task(args, model, train_loader, val_loader, test_loader, run_id, task_id, task_info)
 
         # ----------------
         # 3. Conclude Task
@@ -128,6 +141,7 @@ def _train(args, start_date, class_order, run_id):
         # ------------
 
         if args["mode"] == "eval":
+            #if task_id < 9:
             if task_id < inc_dataset.n_tasks - 1:
                 continue
             model.network.load_state_dict(torch.load(args['resume']))
@@ -142,6 +156,7 @@ def _train(args, start_date, class_order, run_id):
             logger.info(ypreds.shape)
             logger.info(ytrue.shape)
             logger.info(ytrue[0:10])
+            logger.info("Raw acc = {}".format((ypreds.argmax(axis=-1) == ytrue).sum() / ypreds.shape[0]))
             np.save(args["logits_save_dir"], ypreds)
             exit()
 
@@ -171,7 +186,7 @@ def _train(args, start_date, class_order, run_id):
         logger.info("Current acc top5: {}.".format(metric_logger.last_results["accuracy_top5"]))
         logger.info("Forgetting: {}.".format(metric_logger.last_results["forgetting"]))
         logger.info("Cord metric: {:.2f}.".format(metric_logger.last_results["cord"]))
-        if (task_id > (1 if args["merge"] else 0)):
+        if (task_id > (1 if (args["merge"] or merge2) else 0)):
             logger.info(
                 "Old accuracy: {:.2f}, mean: {:.2f}.".format(
                     metric_logger.last_results["old_accuracy"],
@@ -254,11 +269,14 @@ def _after_task(config, model, inc_dataset, run_id, task_id, results_folder):
 
     if config["label"] and (
         config["save_model"] == "task" or
-        (config["save_model"] == "last" and task_id == inc_dataset.n_tasks - 1) or
+        (config["save_model"] == "last" and task_id == (inc_dataset.n_tasks - 1 if LAST == -1 else LAST)) or
         (config["save_model"] == "first" and task_id == 0)
     ):
-        model.save_parameters(results_folder, run_id)
-        model.save_metadata(results_folder, run_id)
+        model.save_parameters(results_folder, run_id, latest=False)
+        model.save_metadata(results_folder, run_id, latest=False)
+    if config["label"] and config["save_latest"]:
+        model.save_parameters(results_folder, run_id, latest=True)
+        model.save_metadata(results_folder, run_id, latest=True)
 
 
 # ----------

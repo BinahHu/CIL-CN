@@ -126,10 +126,13 @@ class ICarl(IncrementalLearner):
                         bn_stats=self._meta_transfer.get("freeze_bn_stats")
                     )
 
-    def save_metadata(self, directory, run_id):
-        path = os.path.join(directory, f"meta_{run_id}_task_{self._task}.pkl")
-
-        logger.info("Saving metadata at {}.".format(path))
+    def save_metadata(self, directory, run_id, latest=False):
+        if latest:
+            path = os.path.join(directory, f"meta_{run_id}.pkl")
+            logger.info("Saving LATEST metadata at {} on task {}.".format(path, self._task + 1))
+        else:
+            path = os.path.join(directory, f"meta_{run_id}_task_{self._task}.pkl")
+            logger.info("Saving metadata at {}.".format(path))
         with open(path, "wb") as f:
             pickle.dump(
                 [self._data_memory, self._targets_memory, self._herding_indexes, self._class_means],
@@ -158,7 +161,11 @@ class ICarl(IncrementalLearner):
     def _before_task(self, train_loader, val_loader):
         self._n_classes += self._task_size
         if self._is_task_level:
-            self._network.add_classes(1)
+            if self.merge and self._task == 1:
+                self._network.add_classes(1)
+                self._network.add_classes(1)
+            else:
+                self._network.add_classes(1)
         else:
             self._network.add_classes(self._task_size)
         logger.info("Now {} examplars per class.".format(self._memory_per_class))
@@ -281,14 +288,15 @@ class ICarl(IncrementalLearner):
 
     def _print_metrics(self, prog_bar, epoch, nb_epochs, nb_batches):
         pretty_metrics = ", ".join(
-            "{}: {}".format(metric_name, round(metric_value / nb_batches, 3))
+            "{}: {}".format(metric_name, round(metric_value / nb_batches, 4))
             for metric_name, metric_value in self._metrics.items()
         )
-
-        prog_bar.set_description(
-            "T{}/{}, E{}/{} => {}".format(
+        info = "T{}/{}, E{}/{} => {}".format(
                 self._task + 1, self._n_tasks, epoch + 1, nb_epochs, pretty_metrics
             )
+        logger.info(info)
+        prog_bar.set_description(
+            info
         )
 
     def _forward_loss(

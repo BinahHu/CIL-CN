@@ -38,10 +38,10 @@ extract_no_act: False
 finetuning_config:
   sampling: decouple
   tuning: classifier
-  lr: 0.05
+  lr: 0.1
   epochs: 50
   weight_decay: 0.0005
-  temperature: 5.0
+  temperature: 1.0
   scheduling:
     - 15
     - 30
@@ -51,15 +51,16 @@ finetuning_config:
 # Scheduling
 scheduler: multistep
 scheduling:
+  - 50
   - 100
-  - 120
-warmup:
-  total_epoch: 10
-  multiplier: 1
-  only_first_step: False
+  - 125
+#warmup:
+#  total_epoch: 10
+#  multiplier: 1
+#  only_first_step: False
 
 # Misc
-epochs: 170
+epochs: 150
 lr: 0.1
 lr_decay: 0.1
 optimizer: sgd

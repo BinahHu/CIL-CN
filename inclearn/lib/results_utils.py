@@ -27,6 +27,9 @@ def get_save_folder(model, date, label):
 
 def save_results(results, label, model, date, run_id, seed):
     del results["config"]["device"]
+    if "convnet_config" in results["config"]:
+        if "device" in results["config"]["convnet_config"]:
+            del results["config"]["convnet_config"]["device"]
 
     folder_path = get_save_folder(model, date, label)
 

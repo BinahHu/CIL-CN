@@ -49,6 +49,8 @@ class Classifier(nn.Module):
 
         self.n_classes = 0
 
+        self.fc = None
+
     def on_task_end(self):
         pass
 
@@ -86,6 +88,8 @@ class Classifier(nn.Module):
         return None
 
     def forward(self, features):
+        logits = self.fc(features)
+        return {"logits": logits}
         if len(self._weights) == 0:
             raise Exception("Add some classes before training.")
 
@@ -102,6 +106,9 @@ class Classifier(nn.Module):
         return {"logits": logits}
 
     def add_classes(self, n_classes):
+        self.fc = nn.Linear(self.features_dim, n_classes)
+        self.to(self.device)
+        return
         self._weights.append(nn.Parameter(torch.randn(n_classes, self.features_dim)))
         self._init(self.init_method, self.new_weights)
 
@@ -662,16 +669,21 @@ class WithAuxClassifier(nn.Module):
         normalize=False,
         init="kaiming",
         reuse_oldfc=False,
+        reuse_oldfc_shortcut=False,
         aux_nplus1=True,
         with_class=False,
+        enable_shortcut=False,
+        merge_two=False,
         **kwargs):
         super(WithAuxClassifier, self).__init__()
 
         self.features_dim = features_dim
+        self.merge2 = merge_two
 
         self.classifier = None
         self.aux_classifier = None
         self.with_class_fc = None
+        self.shortcut_classifier = None
         self.ntask = 0
         self.n_classes = 0
         self.n_with_class_classes=0
@@ -681,25 +693,54 @@ class WithAuxClassifier(nn.Module):
         self.init = init
 
         self.reuse_oldfc = reuse_oldfc
+        self.reuse_oldfc_shortcut = reuse_oldfc_shortcut
         self.aux_nplus1 = aux_nplus1
         self.with_class = with_class
+        self.enable_shortcut = enable_shortcut
+        self.shortcut = False
         self.device = device
 
     def forward(self, features):
-        logits = self.classifier(features)
+        if self.shortcut:
+            logits = self.shortcut_classifier(features[:, -self.features_dim:])
+        else:
+            logits = self.classifier(features)
         aux_logits = self.aux_classifier(features[:, -self.features_dim:]) if features.shape[1] > self.features_dim else None
         logit_class = self.with_class_fc(features) if self.with_class else None
 
         return {'logit': logits, 'aux_logit': aux_logits, 'logit_class': logit_class}
 
+    @property
+    def weight(self):
+        return self.classifier.weight
+
+    def switch(self):
+        self.shortcut = False
+        weight = copy.deepcopy(self.shortcut_classifier.weight.data)
+        self.classifier.weight.data[:, -self.features_dim:] = weight
+        if self.use_bias:
+            bias = copy.deepcopy(self.shortcut_classifier.bias.data)
+            self.classifier.bias.data = bias
+
     def add_classes(self, n_classes, with_class_classes=None):
         self.ntask += 1
+        true_ntask = self.ntask
+        if self.merge2:
+            assert self.ntask % 2 == 0
+            true_ntask = self.ntask // 2
 
-        fc = self._gen_classifier(self.features_dim * self.ntask, self.n_classes + n_classes)
+        fc = self._gen_classifier(self.features_dim * true_ntask, self.n_classes + n_classes)
+
+        if self.enable_shortcut:
+            self.shortcut = True
+            self.shortcut_classifier = self._gen_classifier(self.features_dim, self.n_classes + n_classes)
 
         if self.classifier is not None and self.reuse_oldfc:
             weight = copy.deepcopy(self.classifier.weight.data)
-            fc.weight.data[:self.n_classes, :self.features_dim * (self.ntask - 1)] = weight
+            fc.weight.data[:self.n_classes, :self.features_dim * (true_ntask - 1)] = weight
+            if self.use_bias:
+                bias = copy.deepcopy(self.classifier.bias.data)
+                fc.bias.data[:self.n_classes] = bias
         del self.classifier
         self.classifier = fc
 
@@ -711,7 +752,7 @@ class WithAuxClassifier(nn.Module):
         self.aux_classifier = aux_fc
 
         if self.with_class:
-            with_class_fc = self._gen_classifier(self.features_dim * self.ntask, self.n_with_class_classes + with_class_classes)
+            with_class_fc = self._gen_classifier(self.features_dim * true_ntask, self.n_with_class_classes + with_class_classes)
             del self.with_class_fc
             self.with_class_fc = with_class_fc
             self.n_with_class_classes += with_class_classes
@@ -770,3 +811,79 @@ class SimpleCosineClassifier(nn.Module):
         if self.sigma is not None:
             out = self.sigma * out
         return out
+
+class MultiClassifier(nn.Module):
+
+    def __init__(self,
+        features_dim,
+        device,
+        *,
+        use_bias=False,
+        normalize=False,
+        init="kaiming",
+        **kwargs):
+        super(MultiClassifier, self).__init__()
+
+        self.features_dim = features_dim
+
+        self.classifiers = nn.ModuleList([])
+        self.task_id = -1
+        self.n_classes = 0
+        self.n_with_class_classes=0
+
+        self.use_bias = use_bias
+        self.normalize = normalize
+        self.init = init
+
+        self.device = device
+
+    def freeze_classifier(self, task_id):
+        for name, p in self.classifiers[task_id].named_parameters():
+            p.requires_grad = False
+
+    def forward(self, features):
+        is_train = not isinstance(features, list)
+        if is_train:
+            logits = self.classifiers[self.task_id](features)
+        else:
+            logits_list = []
+            for i in range(self.task_id + 1):
+                logits_list.append(self.classifiers[i](features[i]))
+            logits = torch.cat(logits_list, 1)
+
+        return {'logit': logits}
+
+    def add_classes(self, n_classes):
+        self.task_id += 1
+
+        fc = self._gen_classifier(self.features_dim, n_classes)
+
+        self.classifiers.append(fc)
+
+        self.n_classes += n_classes
+
+        self.to(self.device)
+
+    def reset_parameters(self):
+        self.classifier.reset_parameters()
+
+    def _gen_classifier(self, in_features, n_classes):
+        if self.normalize:
+            classifier = SimpleCosineClassifier(in_features, n_classes).to(self.device)
+        else:
+            classifier = nn.Linear(in_features, n_classes, bias=self.use_bias).to(self.device)
+            if self.init == "kaiming":
+                nn.init.kaiming_normal_(classifier.weight, nonlinearity="linear")
+            if self.use_bias:
+                nn.init.constant_(classifier.bias, 0.0)
+
+        return classifier
+
+    def on_task_end(self):
+        pass
+
+    def on_epoch_end(self):
+        pass
+
+    def add_custom_weights(self, weights, ponderate=None, **kwargs):
+        pass

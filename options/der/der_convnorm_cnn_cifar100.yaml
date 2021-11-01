@@ -1,14 +1,14 @@
 dataset: cifar100
 
 model: der
-convnet: multinet
+convnet: resnet18_adapter
 convnet_config:
-  sub_convnet: resnet18
-  sub_convnet_config:
-    last_relu: True
-    nf: 64
-
-eval_every_x_epochs: 10
+  pretrained_model: /home/zhiyuan/CIL-CN/saved_models/der_imagenet2.pth
+  #prefix: "convnet.convnets.0."
+  prefix: "convnet."
+  nf: 64
+  init_mode: multi
+  #initial_kernel: 7
 
 fixed_memory: False
 memory_size: 2000
@@ -17,21 +17,17 @@ eval_type: cnn
 
 classifier_config:
   type: auxcls
-  aux_weight: 0.0
   normalize: False
   use_bias: False
   reuse_oldfc: False
   aux_n+1: True
-  with_class: False
-  enable_shortcut: False
-  reuse_oldfc_shortcut: False
 
-shortcut_epochs: 0
+task_max: 10
 
-task_max: 20
+eval_every_x_epochs: 10
 
 distillation: "none"
-temperature: 1
+temperature: 2
 dynamic_weight_decay: False
 extract_no_act: False
 

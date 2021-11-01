@@ -13,15 +13,26 @@ from sklearn.neighbors import KNeighborsClassifier
 
 logger = logging.getLogger(__name__)
 
-def display_weight_norm(logger, network, increments, tag):
+def display_weight_norm(logger, network, increments, tag, multi=False, task_level=False):
     weight_norms = [[] for _ in range(len(increments))]
     increments = np.cumsum(np.array(increments))
-    for idx in range(network.module.classifier.weight.shape[0]):
-        norm = torch.norm(network.module.classifier.weight[idx].data, p=2).item()
-        for i in range(len(weight_norms)):
-            if idx < increments[i]:
-                break
-        weight_norms[i].append(round(norm, 3))
+    if multi:
+        L = network.module.classifier.weight.shape[0]
+    else:
+        L = network.classifier.weight.shape[0]
+    for idx in range(L):
+        if multi:
+            norm = torch.norm(network.module.classifier.weight[idx].data, p=2).item()
+        else:
+            norm = torch.norm(network.classifier.weight[idx].data, p=2).item()
+
+        if task_level:
+            weight_norms[idx].append(round(norm, 3))
+        else:
+            for i in range(len(weight_norms)):
+                if idx < increments[i]:
+                    break
+            weight_norms[i].append(round(norm, 3))
     avg_weight_norm = []
     for idx in range(len(weight_norms)):
         avg_weight_norm.append(round(np.array(weight_norms[idx]).mean(), 3))
@@ -55,9 +66,11 @@ def get_featnorm_grouped_by_class(network, cur_n_cls, loader):
     feat_norms = np.zeros(cur_n_cls)
     network.eval()
     with torch.no_grad():
-        for x, y in loader:
-            x = x.cuda()
-            feat = network(x)['feature'].cpu()
+        for input_dict in loader:
+            x = input_dict['inputs']
+            y = input_dict['targets']
+            x = x.cuda(device=network.device)
+            feat = network(x)['features'].cpu()
             for i, lbl in enumerate(y):
                 feats[lbl].append(feat[y == lbl])
     for i in range(len(feats)):
@@ -97,7 +110,7 @@ def get_date():
     return datetime.datetime.now().strftime("%Y%m%d")
 
 
-def extract_features(model, loader):
+def extract_features(model, loader, use_tgt_dataset=False):
     targets, features = [], []
 
     state = model.training
@@ -105,9 +118,14 @@ def extract_features(model, loader):
 
     for input_dict in loader:
         inputs, _targets = input_dict["inputs"], input_dict["targets"]
+        targets_dataset = input_dict["targets_dataset"]
+        if use_tgt_dataset:
+            inputs = [inputs.to(model.device), targets_dataset.to(model.device)]
+        else:
+            inputs = inputs.to(model.device)
 
         _targets = _targets.numpy()
-        _features = model.extract(inputs.to(model.device)).detach().cpu().numpy()
+        _features = model.extract(inputs).detach().cpu().numpy()
 
         features.append(_features)
         targets.append(_targets)
