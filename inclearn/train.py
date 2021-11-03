@@ -124,11 +124,7 @@ def _train(args, start_date, class_order, run_id):
         # 2. Train Task
         # -------------
         if args["mode"] == "train":
-            if task_id < 0:
-            #if task_id < inc_dataset.n_tasks - 1:
-                pass
-            else:
-                _train_task(args, model, train_loader, val_loader, test_loader, run_id, task_id, task_info)
+            _train_task(args, model, train_loader, val_loader, test_loader, run_id, task_id, task_info)
 
         # ----------------
         # 3. Conclude Task
@@ -141,7 +137,6 @@ def _train(args, start_date, class_order, run_id):
         # ------------
 
         if args["mode"] == "eval":
-            #if task_id < 9:
             if task_id < inc_dataset.n_tasks - 1:
                 continue
             model.network.load_state_dict(torch.load(args['resume']))
@@ -158,6 +153,22 @@ def _train(args, start_date, class_order, run_id):
             logger.info(ytrue[0:10])
             logger.info("Raw acc = {}".format((ypreds.argmax(axis=-1) == ytrue).sum() / ypreds.shape[0]))
             np.save(args["logits_save_dir"], ypreds)
+            if not args["task"]:
+                preds = ypreds.argmax(axis=-1)
+                increments = inc_dataset.increments
+                C = 0
+                N = preds.shape[0]
+                for i in range(N):
+                    j1 = 0
+                    j2 = 0
+                    for j in range(len(increments)):
+                        if preds[i] >= sum(increments[:j]) and preds[i] < sum(increments[:j+1]):
+                            j1 = j
+                        if ytrue[i] >= sum(increments[:j]) and ytrue[i] < sum(increments[:j+1]):
+                            j2 = j
+                    C += (j1 == j2)
+                logger.info("Task level acc = {}".format(C / N))
+
             exit()
 
         metric_logger.log_task(
