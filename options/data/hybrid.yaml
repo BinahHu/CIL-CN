@@ -1,0 +1,8 @@
+dataset: cub-fgvc-flower-dog
+data_path:
+  - /gpu6_ssd/zhiyuan/datasets/CUB_200_2011
+  - /gpu6_ssd/zhiyuan/datasets/fgvc-aircraft-2013b
+  - /gpu6_ssd/zhiyuan/datasets/flowers
+  - /gpu6_ssd/zhiyuan/datasets/StanfordDog
+split: [200, 100, 102, 120]
+seed: [1997]

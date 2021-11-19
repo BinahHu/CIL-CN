@@ -1,0 +1,41 @@
+dataset: cifar100
+
+model: covnorm
+convnet: resnet18_adapter
+convnet_config:
+  pretrained: True
+  pretrained_model: ImageNet-800
+  pretrained_mode_path: /home/zhiyuan/CIL-CN/saved_models/model_best.pth.tar
+
+classifier_config:
+  type: multi
+  normalize: False
+  use_bias: True
+
+eval_every_x_epochs: 10
+
+temperature: 1
+dynamic_weight_decay: False
+extract_no_act: False
+
+# Scheduling
+scheduler: multistep
+scheduling:
+  - 50
+  - 100
+  - 125
+#warmup:
+#  total_epoch: 10
+#  multiplier: 1
+#  only_first_step: False
+
+# Misc
+epochs: 150
+lr: 0.1
+lr_decay: 0.1
+optimizer: sgd
+proxy_per_class: 1
+weight_decay: 0.0004
+
+dataset_transforms:
+  color_jitter: True

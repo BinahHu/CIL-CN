@@ -1,0 +1,6 @@
+options:
+  - options/data/cifar100_1order.yaml
+increment: 10
+fixed-memory: True
+label: bic_cnn_cifar100_10steps_buffer2000_tune
+data-path: ../DER-ClassIL.pytorch/data/cifar100/
