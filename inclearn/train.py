@@ -137,7 +137,7 @@ def _train(args, start_date, class_order, run_id):
         # ------------
 
         if args["mode"] == "eval":
-            if task_id < inc_dataset.n_tasks - 1:
+            if task_id < (inc_dataset.n_tasks - 1 if LAST == -1 else LAST - 1):
                 continue
             model.network.load_state_dict(torch.load(args['resume']))
             meta_data_path = args['resume'].split('/')[:-1]
