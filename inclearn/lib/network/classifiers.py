@@ -674,6 +674,7 @@ class WithAuxClassifier(nn.Module):
         with_class=False,
         enable_shortcut=False,
         merge_two=False,
+        expansion=1,
         **kwargs):
         super(WithAuxClassifier, self).__init__()
 
@@ -691,6 +692,7 @@ class WithAuxClassifier(nn.Module):
         self.use_bias = use_bias
         self.normalize = normalize
         self.init = init
+        self.expansion = expansion
 
         self.reuse_oldfc = reuse_oldfc
         self.reuse_oldfc_shortcut = reuse_oldfc_shortcut
@@ -707,6 +709,11 @@ class WithAuxClassifier(nn.Module):
             logits = self.classifier(features)
         aux_logits = self.aux_classifier(features[:, -self.features_dim:]) if features.shape[1] > self.features_dim else None
         logit_class = self.with_class_fc(features) if self.with_class else None
+        if self.expansion != 1:
+            N, F = logits.shape
+            assert F % self.expansion == 0
+            logits = logits.view(N, F // self.expansion, self.expansion)
+            logits = logits.max(dim=-1)[0]
 
         return {'logit': logits, 'aux_logit': aux_logits, 'logit_class': logit_class}
 
@@ -729,15 +736,15 @@ class WithAuxClassifier(nn.Module):
             assert self.ntask % 2 == 0
             true_ntask = self.ntask // 2
 
-        fc = self._gen_classifier(self.features_dim * true_ntask, self.n_classes + n_classes)
+        fc = self._gen_classifier(self.features_dim * true_ntask, (self.n_classes + n_classes) * self.expansion)
 
         if self.enable_shortcut:
             self.shortcut = True
-            self.shortcut_classifier = self._gen_classifier(self.features_dim, self.n_classes + n_classes)
+            self.shortcut_classifier = self._gen_classifier(self.features_dim, (self.n_classes + n_classes) * self.expansion)
 
         if self.classifier is not None and self.reuse_oldfc:
             weight = copy.deepcopy(self.classifier.weight.data)
-            fc.weight.data[:self.n_classes, :self.features_dim * (true_ntask - 1)] = weight
+            fc.weight.data[:self.n_classes * self.expansion, :self.features_dim * (true_ntask - 1)] = weight
             if self.use_bias:
                 bias = copy.deepcopy(self.classifier.bias.data)
                 fc.bias.data[:self.n_classes] = bias
