@@ -329,3 +329,10 @@ def construct_balanced_subset(x, y):
         ydata[i] = ydata[i][idx][:minsize]
     # !list
     return np.concatenate(xdata, 0), np.concatenate(ydata, 0)
+
+def CosFaceLoss(logits, targets, margin=1):
+    import torch.nn.functional as F
+    delta = torch.zeros(logits.shape).cuda(logits.device)
+    norm = torch.norm(logits, dim=1).unsqueeze(1)
+    delta = delta.scatter(dim=1, index=targets.unsqueeze(1), src= margin * norm)
+    return F.cross_entropy(logits - delta, targets)
