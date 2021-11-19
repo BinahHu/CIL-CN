@@ -25,6 +25,7 @@ classifier_config:
   with_class: False
   enable_shortcut: False
   reuse_oldfc_shortcut: False
+  expansion: 1
 
 shortcut_epochs: 0
 
