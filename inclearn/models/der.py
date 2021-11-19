@@ -527,6 +527,8 @@ class DER(ICarl):
 
     def _compute_loss(self, inputs, targets, outputs, old_classes, new_classes, targets_class=None, targets_dataset=None, temperature=1.0):
         loss = F.cross_entropy(outputs['logit'] / temperature, targets)
+        #loss = utils.CosFaceLoss(outputs['logit'], targets)
+
 
         if outputs['aux_logit'] is not None:
             aux_targets = targets.clone()
@@ -557,14 +559,21 @@ class DER(ICarl):
 
         return ypreds, ytrue
 
-    def _compute_accuracy_by_netout(self, data_loader):
+    def _compute_accuracy_by_netout(self, data_loader, save_features=False):
         preds, targets = [], []
+        if save_features:
+            features = []
         self._network.eval()
         with torch.no_grad():
             for input_dict in data_loader:
                 inputs = input_dict["inputs"]
                 lbls = input_dict["targets_task"] if self._is_task_level else input_dict["targets"]
                 inputs = inputs.to(self._device, non_blocking=True)
+                if save_features:
+                    feature = self._network.extract(inputs)
+                    features.append(feature.detach().cpu().numpy())
+                    targets.append(lbls.long().cpu().numpy())
+                    continue
                 if self.with_super_split and self.use_oracle_super_label:
                     targets_dataset = input_dict["targets_dataset"].to(self._device, non_blocking=True)
                     _preds = self._network([inputs, targets_dataset])['logit']
@@ -572,8 +581,15 @@ class DER(ICarl):
                     _preds = self._network(inputs)['logit']
                 preds.append(_preds.detach().cpu().numpy())
                 targets.append(lbls.long().cpu().numpy())
-        preds = np.concatenate(preds, axis=0)
+        if save_features:
+            features = np.concatenate(features, axis=0)
+            np.save("task_features_margin5.npy", features)
+        else:
+            preds = np.concatenate(preds, axis=0)
         targets = np.concatenate(targets, axis=0)
+        if save_features:
+            np.save("task_targets.npy", targets)
+            exit()
         return preds, targets
 
     def build_examplars_task(self, inc_dataset, herding_indexes, memory_per_class=None, data_source="train"):
