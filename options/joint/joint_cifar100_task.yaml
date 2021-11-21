@@ -8,7 +8,11 @@ convnet_config:
   nf: 64
 
 lr: 0.1
-weight_decay: 0
-lr_decay: 0.1
+weight_decay: 0.0005
+scheduling:
+  - 60
+  - 120
+  - 160
+lr_decay: 0.2
 optimizer: sgd
 epochs: 200

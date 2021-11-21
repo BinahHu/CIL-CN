@@ -1,6 +1,6 @@
 dataset: cifar100
 data_path:
-  ../CIL-backbone/DER-ClassIL.pytorch/data/cifar100/
+  /gpu7_ssd/zhiyuan/datasets/CIFAR100/
 order:
   - [ 4, 30, 55, 72, 95,
       1, 32, 67, 73, 91,
